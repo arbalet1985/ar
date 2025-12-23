@@ -156,38 +156,71 @@
             console.error(e);
         }
 
-        // Отправка координат
-        function sendLocation() {
-            if (!selectedLat || !selectedLng) {
-                alert('Выберите точку на карте');
-                return;
+// Отправка координат
+function sendLocation() {
+    if (!selectedLat || !selectedLng) {
+        alert('Выберите точку на карте');
+        return;
+    }
+    
+    const data = { 
+        lat: selectedLat, 
+        lon: selectedLng 
+    };
+    const dataStr = JSON.stringify(data);
+    
+    console.log('📍 Отправка данных в Telegram бота:', dataStr);
+    
+    // ✅ ПРЯМАЯ отправка через Telegram Web App (если доступен)
+    if (typeof tg !== 'undefined' && tg.sendData && typeof tg.sendData === 'function') {
+        try {
+            tg.sendData(dataStr);
+            console.log('✅ Данные отправлены через tg.sendData');
+            if (tg.close && typeof tg.close === 'function') {
+                tg.close();
             }
-            const data = { lat: selectedLat, lon: selectedLng };
-            const dataStr = JSON.stringify(data);
-            
-            console.log('Отправка данных:', dataStr);
-            
-            // Пытаемся отправить через Telegram Web App
-            if (typeof tg.sendData === 'function') {
-                try {
-                    tg.sendData(dataStr);
-                    if (typeof tg.close === 'function') {
-                        tg.close();
-                    }
-                    return;
-                } catch (e) {
-                    console.error('Ошибка при отправке через tg.sendData:', e);
-                }
-            }
-            
-            // Если Telegram API недоступен, копируем в буфер обмена и показываем
-            try {
-                navigator.clipboard.writeText(dataStr);
-                alert(`✅ Координаты скопированы в буфер обмена:\n\n${dataStr}\n\nПерейди в Telegram бота и вставь эти данные.`);
-            } catch (e) {
-                alert(`📍 Координаты:\nШирота: ${selectedLat.toFixed(6)}\nДолгота: ${selectedLng.toFixed(6)}\n\nОтправь эти данные боту вручную.`);
-            }
+            return;
+        } catch (e) {
+            console.error('❌ Ошибка tg.sendData:', e);
         }
+    }
+    
+    // ✅ FALLBACK: Копирование в буфер обмена
+    try {
+        await navigator.clipboard.writeText(dataStr);
+        alert(
+            `✅ Координаты скопированы в буфер!\n\n` +
+            `${dataStr}\n\n` +
+            `📋 Ctrl+V → вставь в чат с ботом`
+        );
+        console.log('✅ Данные скопированы в буфер обмена');
+    } catch (clipboardError) {
+        // 📋 Fallback для старых браузеров
+        const textArea = document.createElement('textarea');
+        textArea.value = dataStr;
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        try {
+            document.execCommand('copy');
+            alert(
+                `✅ Координаты скопированы!\n\n` +
+                `${dataStr}\n\n` +
+                `📋 Ctrl+V → вставь в чат с ботом`
+            );
+        } catch (e) {
+            // 📍 Последний fallback — показываем координаты
+            alert(
+                `📍 Координаты для бота:\n\n` +
+                `Широта: ${selectedLat.toFixed(6)}\n` +
+                `Долгота: ${selectedLng.toFixed(6)}\n\n` +
+                `Скопируй и отправь боту:\n` +
+                `${dataStr}`
+            );
+        }
+        document.body.removeChild(textArea);
+    }
+}
 
     </script>
 </body>
