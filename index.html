@@ -163,13 +163,32 @@
                 return;
             }
             const data = { lat: selectedLat, lon: selectedLng };
+            const dataStr = JSON.stringify(data);
+            
+            console.log('Отправка данных:', dataStr);
+            
+            // Пытаемся отправить через Telegram Web App
+            if (typeof tg.sendData === 'function') {
+                try {
+                    tg.sendData(dataStr);
+                    if (typeof tg.close === 'function') {
+                        tg.close();
+                    }
+                    return;
+                } catch (e) {
+                    console.error('Ошибка при отправке через tg.sendData:', e);
+                }
+            }
+            
+            // Если Telegram API недоступен, копируем в буфер обмена и показываем
             try {
-                tg.sendData?.(JSON.stringify(data));
-                tg.close?.();
+                navigator.clipboard.writeText(dataStr);
+                alert(`✅ Координаты скопированы в буфер обмена:\n\n${dataStr}\n\nПерейди в Telegram бота и вставь эти данные.`);
             } catch (e) {
-                alert(`Координаты: ${selectedLat.toFixed(6)}, ${selectedLng.toFixed(6)}`);
+                alert(`📍 Координаты:\nШирота: ${selectedLat.toFixed(6)}\nДолгота: ${selectedLng.toFixed(6)}\n\nОтправь эти данные боту вручную.`);
             }
         }
+
     </script>
 </body>
 </html>
