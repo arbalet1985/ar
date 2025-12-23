@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Выбор координат</title>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
@@ -13,14 +12,19 @@
             padding: 0;
             box-sizing: border-box;
         }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        html, body {
+            width: 100%;
+            height: 100%;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             overflow: hidden;
+        }
+        body {
             background: #000;
         }
         #map {
             width: 100%;
-            height: 100vh;
+            height: 100%;
+            display: block;
         }
         .controls {
             position: fixed;
@@ -42,6 +46,7 @@
             color: #333;
             font-weight: 500;
             white-space: pre-line;
+            line-height: 1.6;
         }
         button {
             background: #0088cc;
@@ -65,120 +70,105 @@
             background: #ccc;
             cursor: not-allowed;
         }
-        .leaflet-container {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        }
     </style>
 </head>
 <body>
     <div id="map"></div>
     <div class="controls">
-        <div class="coordinates" id="coords">Нажмите на карте для выбора точки</div>
-        <button onclick="sendLocation()" id="sendBtn">📍 Отправить координаты</button>
+        <div class="coordinates" id="coords">Загрузка карты...</div>
+        <button onclick="sendLocation()" id="sendBtn" disabled>📍 Отправить координаты</button>
     </div>
 
     <script>
         let map, marker, selectedLat, selectedLng;
+        
+        // Fallback для Telegram Web App
+        const tg = window.Telegram?.WebApp || {
+            ready: () => {},
+            expand: () => {},
+            showAlert: (msg) => alert(msg),
+            sendData: (data) => console.log('Data:', data),
+            close: () => console.log('Close')
+        };
+        
+        // Инициализация
+        tg.ready?.();
+        tg.expand?.();
 
-        // Инициализация Telegram Web App
-        const tg = window.Telegram.WebApp;
-        tg.ready();
-        tg.expand();
-
-        // Создание карты (центр - Нижний Новгород)
-        map = L.map('map', {
-            zoomControl: true,
-            scrollWheelZoom: true,
-            doubleClickZoom: true,
-            boxZoom: true,
-            keyboard: true,
-            dragging: true,
-        }).setView([56.326, 44.002], 12);
-
-        // Тайлы OpenStreetMap (работает на GitHub Pages без CSP ограничений)
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-            maxZoom: 19,
-            minZoom: 0,
-            subdomains: ['a', 'b', 'c']
-        }).addTo(map);
-
-        // SVG маркер (встроенный, без внешних зависимостей)
-        const customIcon = L.divIcon({
-            html: `<svg width="32" height="40" viewBox="0 0 32 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M16 0C7.2 0 0 7.2 0 16c0 8.8 16 24 16 24s16-15.2 16-24c0-8.8-7.2-16-16-16z" fill="#FF3B30"/>
-                <circle cx="16" cy="16" r="6" fill="white"/>
-            </svg>`,
-            className: 'custom-marker',
-            iconSize: [32, 40],
-            iconAnchor: [16, 40],
-            popupAnchor: [0, -40]
-        });
-
-        // Обработчик клика по карте
-        map.on('click', function(e) {
-            selectedLat = e.latlng.lat;
-            selectedLng = e.latlng.lng;
+        // Создание карты
+        try {
+            map = L.map('map').setView([56.326, 44.002], 12);
             
-            // Удаляем предыдущий маркер
-            if (marker) {
-                map.removeLayer(marker);
-            }
-            
-            // Добавляем новый маркер
-            marker = L.marker([selectedLat, selectedLng], { icon: customIcon }).addTo(map);
-            
-            // Плавно перемещаем карту к маркеру
-            map.setView([selectedLat, selectedLng], map.getZoom(), {
-                animate: true,
-                duration: 0.5
+            // CartoDB слой (без блокировок, работает везде)
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+                attribution: '© OpenStreetMap contributors © CARTO',
+                maxZoom: 20,
+                subdomains: 'abcd'
+            }).addTo(map);
+
+            // SVG маркер
+            const customIcon = L.divIcon({
+                html: '<svg width="32" height="40" viewBox="0 0 32 40" xmlns="http://www.w3.org/2000/svg"><path d="M16 0C7.2 0 0 7.2 0 16c0 8.8 16 24 16 24s16-15.2 16-24c0-8.8-7.2-16-16-16z" fill="#FF3B30"/><circle cx="16" cy="16" r="6" fill="white"/></svg>',
+                iconSize: [32, 40],
+                iconAnchor: [16, 40],
+                popupAnchor: [0, -40],
+                className: 'custom-marker'
             });
-            
-            // Обновляем текст координат
-            document.getElementById('coords').textContent = 
-                `Широта: ${selectedLat.toFixed(6)}\nДолгота: ${selectedLng.toFixed(6)}`;
-            
-            // Активируем кнопку
-            document.getElementById('sendBtn').disabled = false;
-        });
 
-        // Функция отправки координат боту
-        function sendLocation() {
-            if (!selectedLat || !selectedLng) {
-                tg.showAlert('Пожалуйста, выберите точку на карте');
-                return;
+            // Клик по карте
+            map.on('click', function(e) {
+                selectedLat = e.latlng.lat;
+                selectedLng = e.latlng.lng;
+                
+                if (marker) map.removeLayer(marker);
+                marker = L.marker([selectedLat, selectedLng], { icon: customIcon }).addTo(map);
+                map.setView([selectedLat, selectedLng], map.getZoom(), { animate: true, duration: 0.5 });
+                
+                document.getElementById('coords').textContent = 
+                    `Широта: ${selectedLat.toFixed(6)}\nДолгота: ${selectedLng.toFixed(6)}`;
+                document.getElementById('sendBtn').disabled = false;
+            });
+
+            // Геолокация
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    function(position) {
+                        const lat = position.coords.latitude;
+                        const lng = position.coords.longitude;
+                        map.setView([lat, lng], 14);
+                        marker = L.marker([lat, lng], { icon: customIcon }).addTo(map);
+                        selectedLat = lat;
+                        selectedLng = lng;
+                        document.getElementById('coords').textContent = 
+                            `Широта: ${lat.toFixed(6)}\nДолгота: ${lng.toFixed(6)}`;
+                        document.getElementById('sendBtn').disabled = false;
+                    },
+                    function(error) {
+                        console.log('Геолокация:', error);
+                        document.getElementById('coords').textContent = 'Нажмите на карте для выбора точки';
+                    }
+                );
+            } else {
+                document.getElementById('coords').textContent = 'Нажмите на карте для выбора точки';
             }
-
-            const data = {
-                lat: selectedLat,
-                lon: selectedLng
-            };
-            
-            tg.sendData(JSON.stringify(data));
-            tg.close();
+        } catch (e) {
+            document.getElementById('coords').textContent = 'Ошибка инициализации карты';
+            console.error(e);
         }
 
-        // Попытка получить текущую геолокацию пользователя
-        if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-                function(position) {
-                    const lat = position.coords.latitude;
-                    const lng = position.coords.longitude;
-                    map.setView([lat, lng], 14);
-                    
-                    // Автоматически ставим маркер на текущее местоположение
-                    marker = L.marker([lat, lng], { icon: customIcon }).addTo(map);
-                    selectedLat = lat;
-                    selectedLng = lng;
-                    
-                    document.getElementById('coords').textContent = 
-                        `Широта: ${lat.toFixed(6)}\nДолгота: ${lng.toFixed(6)}`;
-                    document.getElementById('sendBtn').disabled = false;
-                },
-                function(error) {
-                    console.log('Геолокация недоступна:', error);
-                }
-            );
+        // Отправка координат
+        function sendLocation() {
+            if (!selectedLat || !selectedLng) {
+                alert('Выберите точку на карте');
+                return;
+            }
+            const data = { lat: selectedLat, lon: selectedLng };
+            try {
+                tg.sendData?.(JSON.stringify(data));
+                tg.close?.();
+            } catch (e) {
+                alert(`Координаты: ${selectedLat.toFixed(6)}, ${selectedLng.toFixed(6)}`);
+            }
         }
     </script>
 </body>
