@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Выбор координат</title>
+    <title>🌍 Выбор координат для астрономии</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -16,11 +16,14 @@
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
             overflow: hidden;
-            background: #000;
+            background: var(--tg-color-bg, #000);
+            color: var(--tg-color-text, #fff);
+            transition: all 0.3s ease;
         }
         #map {
             width: 100%;
             height: 100vh;
+            border-radius: 0;
         }
         .controls {
             position: fixed;
@@ -28,94 +31,233 @@
             left: 50%;
             transform: translateX(-50%);
             z-index: 1000;
-            background: white;
-            padding: 15px 20px;
-            border-radius: 12px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-            min-width: 280px;
+            background: var(--tg-color-secondary-bg, rgba(255,255,255,0.9));
+            backdrop-filter: blur(20px);
+            padding: 20px;
+            border-radius: 20px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+            min-width: 300px;
             max-width: 90%;
             text-align: center;
+            border: 1px solid rgba(255,255,255,0.2);
         }
         .coordinates {
-            margin-bottom: 12px;
-            font-size: 14px;
-            color: #333;
-            font-weight: 500;
+            margin-bottom: 16px;
+            font-size: 16px;
+            font-weight: 600;
+            line-height: 1.4;
             white-space: pre-line;
+            background: rgba(0,0,0,0.1);
+            padding: 12px;
+            border-radius: 12px;
+        }
+        .status {
+            font-size: 14px;
+            opacity: 0.8;
+            margin-bottom: 12px;
         }
         button {
-            background: #0088cc;
-            color: white;
+            background: var(--tg-color-primary, #0088cc);
+            color: var(--tg-color-button-text, #fff);
             border: none;
-            padding: 12px 24px;
-            border-radius: 8px;
+            padding: 16px 24px;
+            border-radius: 16px;
             cursor: pointer;
-            font-size: 16px;
-            font-weight: 500;
+            font-size: 17px;
+            font-weight: 600;
             width: 100%;
-            transition: background 0.2s;
+            transition: all 0.2s;
+            box-shadow: 0 4px 16px rgba(0,136,204,0.4);
         }
-        button:hover {
-            background: #0077b3;
+        button:hover:not(:disabled) {
+            background: var(--tg-color-primary, #0077b3);
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(0,136,204,0.5);
         }
-        button:active {
-            background: #006699;
+        button:active:not(:disabled) {
+            transform: translateY(0);
         }
         button:disabled {
-            background: #ccc;
+            background: var(--tg-color-disabled, #ccc);
             cursor: not-allowed;
+            opacity: 0.6;
         }
         .leaflet-container {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-family: inherit;
+        }
+        .leaflet-control-zoom {
+            border-radius: 12px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+        }
+        .leaflet-popup-content-wrapper {
+            border-radius: 12px;
+            background: var(--tg-color-secondary-bg, #fff);
         }
     </style>
 </head>
 <body>
     <div id="map"></div>
     <div class="controls">
-        <div class="coordinates" id="coords">Нажмите на карте для выбора точки</div>
-        <button onclick="sendLocation()" id="sendBtn">📍 Отправить координаты</button>
+        <div class="status" id="status">Загрузка карты...</div>
+        <div class="coordinates" id="coords">👆 Нажмите на карте для выбора точки наблюдения</div>
+        <button onclick="sendLocation()" id="sendBtn" disabled>📍 Отправить координаты боту</button>
     </div>
 
-<script>
-let map, marker, selectedLat = 55.7558, selectedLng = 37.6173;
-const tg = window.Telegram?.WebApp;
+    <script>
+        let map, marker, selectedLat = 57.6260, selectedLng = 60.1002; // Екатеринбург по умолчанию
+        const tg = window.Telegram?.WebApp;
 
-if (tg) {
-    tg.ready(); tg.expand();
-}
+        // Инициализация Telegram WebApp
+        if (tg) {
+            tg.ready();
+            tg.expand();
+            tg.MainButton.setText('📍 Отправить координаты').show().onClick(sendLocation);
+            console.log('✅ Telegram WebApp v' + tg.version);
+            document.getElementById('status').textContent = '🌟 Telegram WebApp готов';
+        } else {
+            document.getElementById('status').textContent = '🌐 Обычный браузер';
+        }
 
-// ✅ CartoDB - РАБОТАЕТ В TELEGRAM!
-map = L.map('map').setView([55.7558, 37.6173], 10);
+        // Инициализация карты
+        map = L.map('map', {
+            zoomControl: true,
+            scrollWheelZoom: 'center',
+            doubleClickZoom: true,
+            boxZoom: true,
+            keyboard: true,
+            dragging: true,
+            zoomAnimation: true
+        }).setView([selectedLat, selectedLng], 12);
 
-L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-    attribution: '© OpenStreetMap © CARTO',
-    subdomains: 'abcd',
-    maxZoom: 20
-}).addTo(map);
+        // ✅ CartoDB Positron - РАБОТАЕТ В TELEGRAM!
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+            attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions">CARTO</a>',
+            subdomains: 'abcd',
+            maxZoom: 20
+        }).addTo(map);
 
-// Остальной код без изменений...
-map.on('click', (e) => {
-    selectedLat = e.latlng.lat;
-    selectedLng = e.latlng.lng;
-    if (marker) map.removeLayer(marker);
-    marker = L.marker([selectedLat, selectedLng]).addTo(map);
-    map.setView([selectedLat, selectedLng], 15);
-    document.getElementById('coords').textContent = 
-        `Широта: ${selectedLat.toFixed(6)}\nДолгота: ${selectedLng.toFixed(6)}`;
-    document.getElementById('sendBtn').disabled = false;
-});
+        // Кастомный маркер (SVG base64 - НЕ БЛОКИРУЕТСЯ)
+        const redIcon = L.divIcon({
+            className: 'custom-marker',
+            html: `
+                <svg width="30" height="42" viewBox="0 0 30 42" style="filter: drop-shadow(0 2px 8px rgba(255,0,0,0.6))">
+                    <path d="M15 0C6.7 0 0 6.7 0 15c0 13 15 27 15 27s15-14 15-27C30 6.7 23.3 0 15 0z" fill="#ff4444"/>
+                    <circle cx="15" cy="15" r="7" fill="white"/>
+                    <circle cx="15" cy="15" r="5" fill="#ff4444"/>
+                </svg>
+            `,
+            iconSize: [30, 42],
+            iconAnchor: [15, 42],
+            popupAnchor: [0, -40]
+        });
 
-function sendLocation() {
-    if (!selectedLat || !selectedLng) return alert('👆 Кликните на карте!');
-    const dataStr = JSON.stringify({lat: selectedLat, lon: selectedLng});
-    if (tg?.sendData) {
-        tg.sendData(dataStr); tg.close(); return;
-    }
-    navigator.clipboard.writeText(dataStr).then(() => 
-        alert(`✅ Скопировано!\n${dataStr}\n📋 Ctrl+V в бот`)
-    );
-}
-</script>
+        // Клик по карте
+        map.on('click', function(e) {
+            selectedLat = e.latlng.lat.toFixed(6);
+            selectedLng = e.latlng.lng.toFixed(6);
+            
+            // Удаляем старый маркер
+            if (marker) map.removeLayer(marker);
+            
+            // Новый маркер с popup
+            marker = L.marker([selectedLat, selectedLng], { icon: redIcon }).addTo(map);
+            marker.bindPopup(`
+                <b>📍 Точка наблюдения</b><br>
+                Широта: ${selectedLat}<br>
+                Долгота: ${selectedLng}<br>
+                <small>Идеально для астрономии! 🌌</small>
+            `).openPopup();
+            
+            // Центрируем карту
+            map.setView([selectedLat, selectedLng], 16, {
+                animate: true,
+                duration: 0.5
+            });
+            
+            // Обновляем UI
+            document.getElementById('coords').textContent = 
+                `🌟 Широта: ${selectedLat}°\n⭐ Долгота: ${selectedLng}°`;
+            document.getElementById('sendBtn').disabled = false;
+            
+            if (tg) tg.MainButton.setParams({ text: '🚀 Отправить в бот' });
+            
+            console.log('📍 Выбраны координаты:', selectedLat, selectedLng);
+        });
+
+        // Отправка координат
+        function sendLocation() {
+            if (!selectedLat || !selectedLng) {
+                alert('👆 Сначала выберите точку на карте!');
+                return;
+            }
+            
+            const data = { lat: parseFloat(selectedLat), lon: parseFloat(selectedLng) };
+            const dataStr = JSON.stringify(data);
+            
+            console.log('🚀 Отправка в бот:', dataStr);
+            
+            // ✅ Telegram WebApp (приоритет)
+            if (tg?.sendData) {
+                tg.sendData(dataStr);
+                tg.close();
+                return;
+            }
+            
+            // ✅ Копирование в буфер
+            navigator.clipboard.writeText(dataStr).then(() => {
+                alert(
+                    `✅ Координаты скопированы!\n\n` +
+                    `📋 ${dataStr}\n\n` +
+                    `Ctrl+V → вставьте в чат с ботом`
+                );
+            }).catch(() => {
+                // Fallback для старых браузеров
+                const ta = document.createElement('textarea');
+                ta.value = dataStr;
+                ta.style.position = 'fixed';
+                ta.style.opacity = '0';
+                document.body.appendChild(ta);
+                ta.focus();
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+                alert(`✅ Скопировано!\n\n📋 ${dataStr}`);
+            });
+        }
+
+        // Автоопределение местоположения
+        if (navigator.geolocation && !tg) {
+            navigator.geolocation.getCurrentPosition(
+                function(position) {
+                    selectedLat = position.coords.latitude.toFixed(6);
+                    selectedLng = position.coords.longitude.toFixed(6);
+                    map.setView([selectedLat, selectedLng], 15);
+                    
+                    marker = L.marker([selectedLat, selectedLng], { icon: redIcon }).addTo(map);
+                    marker.bindPopup(`
+                        <b>📍 Ваше местоположение</b><br>
+                        Широта: ${selectedLat}<br>
+                        Долгота: ${selectedLng}
+                    `).openPopup();
+                    
+                    document.getElementById('coords').textContent = 
+                        `🌟 Широта: ${selectedLat}°\n⭐ Долгота: ${selectedLng}°`;
+                    document.getElementById('sendBtn').disabled = false;
+                },
+                function() {
+                    document.getElementById('status').textContent = '🗺️ Используйте Екатеринбург';
+                }
+            );
+        }
+
+        // Адаптация под тему Telegram
+        if (tg?.colorScheme === 'dark') {
+            document.body.style.background = '#1a1a1a';
+            document.querySelector('.controls').style.background = 'rgba(30,30,30,0.95)';
+        }
+
+        console.log('🌟 Астрономическая карта загружена!');
+        document.getElementById('status').textContent = '🌌 Готово! Выберите точку наблюдения';
+    </script>
 </body>
 </html>
