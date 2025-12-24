@@ -79,87 +79,42 @@
 
 <script>
 let map, marker, selectedLat = 55.7558, selectedLng = 37.6173;
-
-// Telegram init
 const tg = window.Telegram?.WebApp;
+
 if (tg) {
-    tg.ready();
-    tg.expand();
-    console.log('✅ Telegram WebApp готов');
-} else {
-    console.log('❌ Telegram WebApp недоступен');
+    tg.ready(); tg.expand();
 }
 
-// Карта (центр Москва)
+// ✅ CartoDB - РАБОТАЕТ В TELEGRAM!
 map = L.map('map').setView([55.7558, 37.6173], 10);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© OpenStreetMap'
+
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    attribution: '© OpenStreetMap © CARTO',
+    subdomains: 'abcd',
+    maxZoom: 20
 }).addTo(map);
 
-// Маркер
-const icon = L.icon({
-    iconUrl: 'data:image/svg+xml;base64,' + btoa(`
-        <svg width="25" height="41" viewBox="0 0 25 41">
-            <path d="M12.5 0C5.6 0 0 5.6 0 12.5c0 11.7 12.5 20.7 12.5 20.7S25 24.2 25 12.5C25 5.6 19.4 0 12.5 0z" fill="%23ff0000"/>
-            <circle cx="12.5" cy="12.5" r="6" fill="white"/>
-        </svg>
-    `),
-    iconSize: [25, 41],
-    iconAnchor: [12, 41]
-});
-
-// Клик по карте
+// Остальной код без изменений...
 map.on('click', (e) => {
     selectedLat = e.latlng.lat;
     selectedLng = e.latlng.lng;
-    
     if (marker) map.removeLayer(marker);
-    marker = L.marker([selectedLat, selectedLng], {icon}).addTo(map);
+    marker = L.marker([selectedLat, selectedLng]).addTo(map);
     map.setView([selectedLat, selectedLng], 15);
-    
     document.getElementById('coords').textContent = 
         `Широта: ${selectedLat.toFixed(6)}\nДолгота: ${selectedLng.toFixed(6)}`;
     document.getElementById('sendBtn').disabled = false;
 });
 
-// Отправка (БЕЗ await!)
 function sendLocation() {
-    if (!selectedLat || !selectedLng) {
-        alert('👆 Кликните на карте!');
-        return;
-    }
-    
-    const data = {lat: selectedLat, lon: selectedLng};
-    const dataStr = JSON.stringify(data);
-    
-    console.log('📍', dataStr);
-    
-    // Telegram
+    if (!selectedLat || !selectedLng) return alert('👆 Кликните на карте!');
+    const dataStr = JSON.stringify({lat: selectedLat, lon: selectedLng});
     if (tg?.sendData) {
-        tg.sendData(dataStr);
-        tg.close();
-        return;
+        tg.sendData(dataStr); tg.close(); return;
     }
-    
-    // Копирование
-    navigator.clipboard.writeText(dataStr).then(() => {
-        alert(`✅ Скопировано в буфер!\n${dataStr}\n\n📋 Вставьте в бот (Ctrl+V)`);
-    }).catch(() => {
-        prompt('Скопируйте координаты:', dataStr);
-    });
-}
-
-// Геолокация
-if (navigator.geolocation) {
-    navigator.geolocation.getCurrentPosition((pos) => {
-        selectedLat = pos.coords.latitude;
-        selectedLng = pos.coords.longitude;
-        map.setView([selectedLat, selectedLng], 15);
-        marker = L.marker([selectedLat, selectedLng], {icon}).addTo(map);
-        document.getElementById('coords').textContent = 
-            `Широта: ${selectedLat.toFixed(6)}\nДолгота: ${selectedLng.toFixed(6)}`;
-        document.getElementById('sendBtn').disabled = false;
-    });
+    navigator.clipboard.writeText(dataStr).then(() => 
+        alert(`✅ Скопировано!\n${dataStr}\n📋 Ctrl+V в бот`)
+    );
 }
 </script>
 </body>
