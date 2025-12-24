@@ -77,170 +77,90 @@
         <button onclick="sendLocation()" id="sendBtn">📍 Отправить координаты</button>
     </div>
 
-    <script>
-        let map, marker, selectedLat, selectedLng;
+<script>
+let map, marker, selectedLat = 55.7558, selectedLng = 37.6173;
 
-        // Инициализация Telegram Web App
-        const tg = window.Telegram.WebApp;
-        tg.ready();
-        tg.expand(); // Развернуть на весь экран
+// Telegram init
+const tg = window.Telegram?.WebApp;
+if (tg) {
+    tg.ready();
+    tg.expand();
+    console.log('✅ Telegram WebApp готов');
+} else {
+    console.log('❌ Telegram WebApp недоступен');
+}
 
-        // Создание карты (центр - Москва, можно изменить)
-        map = L.map('map', {
-            zoomControl: true,
-            scrollWheelZoom: true,
-            doubleClickZoom: true,
-            boxZoom: true,
-            keyboard: true,
-            dragging: true,
-        }).setView([55.7558, 37.6173], 10);
+// Карта (центр Москва)
+map = L.map('map').setView([55.7558, 37.6173], 10);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap'
+}).addTo(map);
 
-        // Используем бесплатные тайлы OpenStreetMap (рекомендуемый провайдер)
-        L.tileLayer('https://{s}.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png', {
-            attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-            maxZoom: 20,
-            subdomains: 'abc'
-        }).addTo(map);
+// Маркер
+const icon = L.icon({
+    iconUrl: 'data:image/svg+xml;base64,' + btoa(`
+        <svg width="25" height="41" viewBox="0 0 25 41">
+            <path d="M12.5 0C5.6 0 0 5.6 0 12.5c0 11.7 12.5 20.7 12.5 20.7S25 24.2 25 12.5C25 5.6 19.4 0 12.5 0z" fill="%23ff0000"/>
+            <circle cx="12.5" cy="12.5" r="6" fill="white"/>
+        </svg>
+    `),
+    iconSize: [25, 41],
+    iconAnchor: [12, 41]
+});
 
-        // Альтернативные тайлы (раскомментируйте, если нужна другая карта):
-        // CartoDB (светлая тема):
-        // L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-        //     attribution: '© OpenStreetMap contributors © CARTO',
-        //     subdomains: 'abcd',
-        //     maxZoom: 20
-        // }).addTo(map);
+// Клик по карте
+map.on('click', (e) => {
+    selectedLat = e.latlng.lat;
+    selectedLng = e.latlng.lng;
+    
+    if (marker) map.removeLayer(marker);
+    marker = L.marker([selectedLat, selectedLng], {icon}).addTo(map);
+    map.setView([selectedLat, selectedLng], 15);
+    
+    document.getElementById('coords').textContent = 
+        `Широта: ${selectedLat.toFixed(6)}\nДолгота: ${selectedLng.toFixed(6)}`;
+    document.getElementById('sendBtn').disabled = false;
+});
 
-        // Создаем кастомную иконку маркера
-        const customIcon = L.icon({
-            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
-            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
-            iconSize: [25, 41],
-            iconAnchor: [12, 41],
-            popupAnchor: [1, -34],
-            shadowSize: [41, 41]
-        });
-
-        // Обработчик клика по карте
-        map.on('click', function(e) {
-            selectedLat = e.latlng.lat;
-            selectedLng = e.latlng.lng;
-            
-            // Удаляем предыдущий маркер
-            if (marker) {
-                map.removeLayer(marker);
-            }
-            
-            // Добавляем новый маркер
-            marker = L.marker([selectedLat, selectedLng], { icon: customIcon }).addTo(map);
-            
-            // Плавно перемещаем карту к маркеру
-            map.setView([selectedLat, selectedLng], map.getZoom(), {
-                animate: true,
-                duration: 0.5
-            });
-            
-            // Обновляем текст координат
-            document.getElementById('coords').textContent = 
-                `Широта: ${selectedLat.toFixed(6)}\nДолгота: ${selectedLng.toFixed(6)}`;
-            
-            // Активируем кнопку
-            document.getElementById('sendBtn').disabled = false;
-        });
-
-        // Функция отправки координат боту
-// Отправка координат
+// Отправка (БЕЗ await!)
 function sendLocation() {
     if (!selectedLat || !selectedLng) {
-        alert('Выберите точку на карте');
+        alert('👆 Кликните на карте!');
         return;
     }
     
-    const data = { 
-        lat: selectedLat, 
-        lon: selectedLng 
-    };
+    const data = {lat: selectedLat, lon: selectedLng};
     const dataStr = JSON.stringify(data);
     
-    console.log('📍 Отправка данных в Telegram бота:', dataStr);
+    console.log('📍', dataStr);
     
-    // ✅ ПРЯМАЯ отправка через Telegram Web App (если доступен)
-    if (typeof tg !== 'undefined' && tg.sendData && typeof tg.sendData === 'function') {
-        try {
-            tg.sendData(dataStr);
-            console.log('✅ Данные отправлены через tg.sendData');
-            if (tg.close && typeof tg.close === 'function') {
-                tg.close();
-            }
-            return;
-        } catch (e) {
-            console.error('❌ Ошибка tg.sendData:', e);
-        }
+    // Telegram
+    if (tg?.sendData) {
+        tg.sendData(dataStr);
+        tg.close();
+        return;
     }
     
-    // ✅ FALLBACK: Копирование в буфер обмена
-    try {
-        await navigator.clipboard.writeText(dataStr);
-        alert(
-            `✅ Координаты скопированы в буфер!\n\n` +
-            `${dataStr}\n\n` +
-            `📋 Ctrl+V → вставь в чат с ботом`
-        );
-        console.log('✅ Данные скопированы в буфер обмена');
-    } catch (clipboardError) {
-        // 📋 Fallback для старых браузеров
-        const textArea = document.createElement('textarea');
-        textArea.value = dataStr;
-        document.body.appendChild(textArea);
-        textArea.focus();
-        textArea.select();
-        try {
-            document.execCommand('copy');
-            alert(
-                `✅ Координаты скопированы!\n\n` +
-                `${dataStr}\n\n` +
-                `📋 Ctrl+V → вставь в чат с ботом`
-            );
-        } catch (e) {
-            // 📍 Последний fallback — показываем координаты
-            alert(
-                `📍 Координаты для бота:\n\n` +
-                `Широта: ${selectedLat.toFixed(6)}\n` +
-                `Долгота: ${selectedLng.toFixed(6)}\n\n` +
-                `Скопируй и отправь боту:\n` +
-                `${dataStr}`
-            );
-        }
-        document.body.removeChild(textArea);
-    }
+    // Копирование
+    navigator.clipboard.writeText(dataStr).then(() => {
+        alert(`✅ Скопировано в буфер!\n${dataStr}\n\n📋 Вставьте в бот (Ctrl+V)`);
+    }).catch(() => {
+        prompt('Скопируйте координаты:', dataStr);
+    });
 }
 
-
-        // Опционально: попытка получить текущую геолокацию пользователя
-        if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-                function(position) {
-                    const lat = position.coords.latitude;
-                    const lng = position.coords.longitude;
-                    map.setView([lat, lng], 13);
-                    
-                    // Автоматически ставим маркер на текущее местоположение
-                    marker = L.marker([lat, lng], { icon: customIcon }).addTo(map);
-                    selectedLat = lat;
-                    selectedLng = lng;
-                    
-                    document.getElementById('coords').textContent = 
-                        `Широта: ${lat.toFixed(6)}\nДолгота: ${lng.toFixed(6)}`;
-                    document.getElementById('sendBtn').disabled = false;
-                },
-                function(error) {
-                    console.log('Геолокация недоступна:', error);
-                    // Используем координаты по умолчанию (Москва)
-                    document.getElementById('sendBtn').disabled = true;
-                }
-            );
-        } else {
-            document.getElementById('sendBtn').disabled = true;
-        }
-    </script>
+// Геолокация
+if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition((pos) => {
+        selectedLat = pos.coords.latitude;
+        selectedLng = pos.coords.longitude;
+        map.setView([selectedLat, selectedLng], 15);
+        marker = L.marker([selectedLat, selectedLng], {icon}).addTo(map);
+        document.getElementById('coords').textContent = 
+            `Широта: ${selectedLat.toFixed(6)}\nДолгота: ${selectedLng.toFixed(6)}`;
+        document.getElementById('sendBtn').disabled = false;
+    });
+}
+</script>
 </body>
 </html>
