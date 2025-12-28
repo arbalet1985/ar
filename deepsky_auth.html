@@ -47,11 +47,31 @@
         .hidden {
             display: none;
         }
+        .button {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 12px 24px;
+            background: var(--tg-theme-button-color, #0088cc);
+            color: var(--tg-theme-button-text-color, #ffffff);
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            z-index: 1001;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+        .button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
     <div id="status" class="status info">Загрузка страницы авторизации...</div>
     <iframe id="authFrame" src="about:blank"></iframe>
+    <button id="confirmBtn" class="button hidden" onclick="confirmAuth()">Я авторизовался, поставить лайк</button>
 
     <script>
         const tg = window.Telegram.WebApp;
@@ -74,9 +94,18 @@
             statusEl.classList.remove('hidden');
         }
 
+        const confirmBtn = document.getElementById('confirmBtn');
+        
         // Открываем страницу авторизации в iframe
         authFrame.src = 'https://deepskyhosting.com/index.php?do=login';
-        showStatus('Авторизуйтесь на странице ниже');
+        showStatus('Авторизуйтесь на странице ниже, затем нажмите кнопку');
+        
+        // Показываем кнопку подтверждения через 3 секунды
+        setTimeout(() => {
+            if (likeId && pageUrl) {
+                confirmBtn.classList.remove('hidden');
+            }
+        }, 3000);
 
         // Слушаем изменения в iframe
         let checkInterval = null;
@@ -90,16 +119,21 @@
                     const currentUrl = authFrame.contentWindow.location.href;
                     
                     // Проверяем признаки успешной авторизации
+                    // Убеждаемся, что это не просто переход на другую страницу
                     if (currentUrl && (
-                        currentUrl.includes('/id') || 
-                        currentUrl.includes('logout') ||
-                        !currentUrl.includes('login')
+                        (currentUrl.includes('/id') && !currentUrl.includes('login')) || 
+                        (currentUrl.includes('logout') && !currentUrl.includes('login')) ||
+                        (!currentUrl.includes('login') && !currentUrl.includes('index.php?do=login'))
                     )) {
-                        // Возможно авторизованы, проверяем
-                        authChecked = true;
-                        clearInterval(checkInterval);
-                        showStatus('Авторизация обнаружена, ставлю лайк...', 'info');
-                        await tryLikeWithCookies();
+                        // Возможно авторизованы, даем еще немного времени и проверяем
+                        setTimeout(async () => {
+                            if (!authChecked) {
+                                authChecked = true;
+                                clearInterval(checkInterval);
+                                showStatus('Авторизация обнаружена, ставлю лайк...', 'info');
+                                await tryLikeWithCookies();
+                            }
+                        }, 2000);
                     }
                 } catch (e) {
                     // CORS блокирует доступ, это нормально
@@ -108,10 +142,25 @@
             }, 500);
         }
 
-        // Начинаем проверку через 2 секунды после загрузки
+        // Функция для ручного подтверждения авторизации
+        async function confirmAuth() {
+            if (authChecked) return;
+            authChecked = true;
+            if (checkInterval) {
+                clearInterval(checkInterval);
+            }
+            confirmBtn.disabled = true;
+            confirmBtn.textContent = 'Обрабатываю...';
+            showStatus('Ставлю лайк...', 'info');
+            await tryLikeWithCookies();
+        }
+        
+        // Начинаем автоматическую проверку через 30 секунд после загрузки (если пользователь не нажал кнопку)
         setTimeout(() => {
-            startChecking();
-        }, 2000);
+            if (!authChecked && likeId && pageUrl) {
+                startChecking();
+            }
+        }, 30000);
 
         // Функция для постановки лайка с использованием cookies браузера
         async function tryLikeWithCookies() {
@@ -199,14 +248,6 @@
             }, 1000);
         }
 
-        // Также пытаемся поставить лайк при загрузке страницы (если уже авторизованы)
-        // Это для случая, когда пользователь уже авторизован в браузере
-        setTimeout(async () => {
-            if (likeId && pageUrl && !authChecked) {
-                showStatus('Проверяю авторизацию и ставлю лайк...', 'info');
-                await tryLikeWithCookies();
-            }
-        }, 5000);
     </script>
 </body>
 </html>
