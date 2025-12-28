@@ -105,6 +105,12 @@
         tg.ready();
         tg.expand();
 
+        // Получаем параметры из URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const likeId = urlParams.get('like_id');
+        const pageUrl = urlParams.get('page_url') ? decodeURIComponent(urlParams.get('page_url')) : null;
+        const messageId = urlParams.get('message_id');
+
         function openAuthPage() {
             const statusEl = document.getElementById('status');
             const openBtn = document.getElementById('openAuthBtn');
@@ -131,36 +137,9 @@
             statusEl.textContent = 'Проверяю авторизацию...';
             checkBtn.disabled = true;
 
-            // Пробуем получить cookies через fetch к deepskyhosting.com
-            // Но из-за CORS это не сработает напрямую
-            // Поэтому используем другой метод: открываем страницу в iframe и пытаемся получить cookies
-            
-            // Создаем скрытый iframe для проверки
-            const testFrame = document.createElement('iframe');
-            testFrame.style.display = 'none';
-            testFrame.src = 'https://deepskyhosting.com/';
-            
-            // Пробуем получить cookies через document.cookie после загрузки iframe
-            // Но это не сработает из-за CORS для cross-origin
-            
-            // Альтернативный метод: используем серверный прокси или другой подход
-            // Для простоты: используем метод с получением cookies через специальный endpoint
-            
-            // Временное решение: используем метод с копированием cookies
-            // Но пользователь хочет автоматически, поэтому используем другой подход
-            
-            // Попробуем использовать метод с получением cookies через fetch с credentials
-            fetch('https://deepskyhosting.com/', {
-                method: 'GET',
-                credentials: 'include',
-                mode: 'no-cors'  // no-cors не позволяет читать ответ, но cookies отправляются
-            }).then(() => {
-                // Cookies отправлены, но мы не можем их прочитать из-за CORS
-                // Используем другой метод
-                getCookiesViaRedirect();
-            }).catch(() => {
-                getCookiesViaRedirect();
-            });
+            // Из-за CORS нельзя получить cookies автоматически
+            // Поэтому используем метод с копированием cookies пользователем
+            getCookiesViaRedirect();
         }
 
         async function getCookiesViaRedirect() {
@@ -174,18 +153,22 @@
             // Из-за CORS нельзя получить cookies с другого домена автоматически
             // Поэтому используем метод с копированием cookies пользователем
             statusEl.className = 'status info';
+            const instructionsText = likeId 
+                ? 'После ввода cookies лайк будет поставлен автоматически.'
+                : '';
             statusEl.innerHTML = `
                 <strong>Инструкция по получению cookies:</strong><br><br>
                 1. Откройте DevTools (F12) в браузере<br>
                 2. Перейдите на вкладку Application → Cookies → https://deepskyhosting.com<br>
                 3. Скопируйте все cookies (например: PHPSESSID=xxx; user_id=yyy)<br>
                 4. Вставьте их в поле ниже и нажмите "Отправить"<br><br>
+                ${instructionsText}<br>
                 <input type="text" id="cookiesInput" placeholder="Вставьте cookies здесь" style="width: 100%; padding: 8px; margin: 10px 0; border: 1px solid #ddd; border-radius: 4px;">
-                <button class="button" onclick="sendCookies()">Отправить cookies</button>
+                <button class="button" onclick="sendCookies()">Отправить cookies${likeId ? ' и поставить лайк' : ''}</button>
             `;
         }
         
-        function sendCookies() {
+        async function sendCookies() {
             const cookiesInput = document.getElementById('cookiesInput');
             const cookies = cookiesInput ? cookiesInput.value.trim() : '';
             const statusEl = document.getElementById('status');
@@ -196,29 +179,102 @@
                 return;
             }
             
-            // Отправляем cookies боту через Telegram WebApp API
-            tg.sendData(JSON.stringify({
-                type: 'deepsky_cookies',
-                cookies: cookies
-            }));
+            statusEl.className = 'status info';
+            statusEl.textContent = 'Отправляю cookies...';
             
-            statusEl.className = 'status success';
-            statusEl.textContent = '✅ Cookies отправлены боту! Теперь вы можете ставить лайки.';
+            // Если есть like_id, пытаемся поставить лайк через WebApp
+            if (likeId && pageUrl) {
+                try {
+                    // Парсим cookies в объект
+                    const cookiesObj = {};
+                    cookies.split(';').forEach(cookie => {
+                        const [key, value] = cookie.trim().split('=');
+                        if (key && value) {
+                            cookiesObj[key] = value;
+                        }
+                    });
+                    
+                    // Пытаемся поставить лайк через fetch
+                    const likeEndpoints = [
+                        `https://deepskyhosting.com/ajax/like.php`,
+                        `https://deepskyhosting.com/index.php?do=like`,
+                        `https://deepskyhosting.com/ajax/like`,
+                    ];
+                    
+                    let likeSuccess = false;
+                    for (const endpoint of likeEndpoints) {
+                        try {
+                            const formData = new URLSearchParams();
+                            formData.append('id', likeId);
+                            formData.append('action', 'like');
+                            
+                            const response = await fetch(endpoint, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/x-www-form-urlencoded',
+                                    'X-Requested-With': 'XMLHttpRequest',
+                                },
+                                credentials: 'include',
+                                body: formData
+                            });
+                            
+                            if (response.ok) {
+                                const text = await response.text();
+                                if (text.toLowerCase().includes('success') || text.toLowerCase().includes('liked') || text.trim().match(/^\d+$/)) {
+                                    likeSuccess = true;
+                                    break;
+                                }
+                            }
+                        } catch (e) {
+                            console.error('Failed to like via', endpoint, e);
+                        }
+                    }
+                    
+                    // Отправляем cookies и результат лайка боту
+                    tg.sendData(JSON.stringify({
+                        type: 'deepsky_cookies',
+                        cookies: cookies,
+                        like_id: likeId,
+                        page_url: pageUrl,
+                        message_id: messageId,
+                        like_success: likeSuccess
+                    }));
+                    
+                    if (likeSuccess) {
+                        statusEl.className = 'status success';
+                        statusEl.textContent = '✅ Cookies сохранены и лайк поставлен!';
+                    } else {
+                        statusEl.className = 'status success';
+                        statusEl.textContent = '✅ Cookies сохранены. Лайк будет поставлен ботом.';
+                    }
+                } catch (e) {
+                    console.error('Error setting like:', e);
+                    // Отправляем только cookies, лайк поставит бот
+                    tg.sendData(JSON.stringify({
+                        type: 'deepsky_cookies',
+                        cookies: cookies,
+                        like_id: likeId,
+                        page_url: pageUrl,
+                        like_success: false
+                    }));
+                    statusEl.className = 'status success';
+                    statusEl.textContent = '✅ Cookies сохранены. Лайк будет поставлен ботом.';
+                }
+            } else {
+                // Нет like_id, просто отправляем cookies
+                tg.sendData(JSON.stringify({
+                    type: 'deepsky_cookies',
+                    cookies: cookies
+                }));
+                statusEl.className = 'status success';
+                statusEl.textContent = '✅ Cookies отправлены боту!';
+            }
             
             // Закрываем WebApp через 2 секунды
             setTimeout(() => {
                 tg.close();
             }, 2000);
         }
-
-        // Альтернативный метод: если WebApp размещен на том же домене, что и deepskyhosting
-        // Но это невозможно, так как deepskyhosting.com - это не наш домен
-        
-        // Единственный рабочий автоматический метод: использовать серверный прокси
-        // который будет получать cookies от имени пользователя
-        
-        // Для реализации автоматического получения cookies нужен серверный endpoint
-        // который будет проксировать запросы и получать cookies
     </script>
 </body>
 </html>
