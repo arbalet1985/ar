@@ -96,7 +96,11 @@
 
         const confirmBtn = document.getElementById('confirmBtn');
         
-        // Открываем страницу авторизации в iframe
+        // Открываем страницу авторизации в том же окне (не в iframe), чтобы cookies были доступны
+        // Используем window.location для редиректа на страницу авторизации
+        // После авторизации пользователь вернется через callback или мы проверим авторизацию
+        
+        // Сначала показываем iframe для авторизации
         authFrame.src = 'https://deepskyhosting.com/index.php?do=login';
         showStatus('Авторизуйтесь на странице ниже, затем нажмите кнопку');
         
@@ -106,6 +110,48 @@
                 confirmBtn.classList.remove('hidden');
             }
         }, 3000);
+        
+        // Альтернативный метод: открываем страницу авторизации в новом окне
+        // Это позволит cookies быть доступными для основного окна
+        function openAuthInNewWindow() {
+            const authUrl = 'https://deepskyhosting.com/index.php?do=login';
+            const authWindow = window.open(authUrl, 'auth', 'width=600,height=700');
+            
+            if (!authWindow) {
+                showStatus('Браузер заблокировал всплывающее окно. Разрешите всплывающие окна.', 'error');
+                return;
+            }
+            
+            showStatus('Авторизуйтесь во всплывающем окне, затем вернитесь сюда и нажмите кнопку');
+            
+            // Проверяем, закрылось ли окно (признак успешной авторизации)
+            const checkWindow = setInterval(() => {
+                if (authWindow.closed) {
+                    clearInterval(checkWindow);
+                    showStatus('Окно закрыто. Проверяю авторизацию...', 'info');
+                    // Даем время на сохранение cookies
+                    setTimeout(() => {
+                        if (likeId && pageUrl) {
+                            confirmBtn.classList.remove('hidden');
+                            showStatus('Нажмите кнопку ниже для постановки лайка', 'info');
+                        }
+                    }, 2000);
+                }
+            }, 1000);
+        }
+        
+        // Показываем опцию открытия в новом окне через 5 секунд
+        setTimeout(() => {
+            if (confirmBtn && !confirmBtn.classList.contains('hidden')) {
+                // Добавляем альтернативную кнопку
+                const newWindowBtn = document.createElement('button');
+                newWindowBtn.className = 'button';
+                newWindowBtn.textContent = 'Открыть авторизацию в новом окне';
+                newWindowBtn.style.bottom = '80px';
+                newWindowBtn.onclick = openAuthInNewWindow;
+                document.body.appendChild(newWindowBtn);
+            }
+        }, 5000);
 
         // Слушаем изменения в iframe
         let checkInterval = null;
@@ -169,8 +215,15 @@
             }
             confirmBtn.disabled = true;
             confirmBtn.textContent = 'Обрабатываю...';
-            showStatus('Ставлю лайк...', 'info');
-            await tryLikeWithCookies();
+            showStatus('Проверяю авторизацию...', 'info');
+            
+            // Даем время на сохранение cookies после авторизации в iframe
+            // К сожалению, cookies из iframe не доступны для основного окна из-за CORS
+            // Поэтому просто пытаемся поставить лайк - если авторизация прошла в браузере Telegram,
+            // cookies должны быть доступны
+            setTimeout(async () => {
+                await tryLikeWithCookies();
+            }, 1000);
         }
         
         // Начинаем автоматическую проверку через 30 секунд после загрузки (если пользователь не нажал кнопку)
@@ -197,36 +250,11 @@
                 return;
             }
 
-            showStatus('Проверяю авторизацию и ставлю лайк...', 'info');
+            showStatus('Ставлю лайк...', 'info');
             
-            // Сначала проверяем, авторизованы ли мы, делая запрос к главной странице
-            try {
-                const checkAuthResponse = await fetch('https://deepskyhosting.com/', {
-                    method: 'GET',
-                    credentials: 'include',
-                    mode: 'cors'
-                });
-                
-                if (checkAuthResponse.ok) {
-                    const html = await checkAuthResponse.text();
-                    // Проверяем признаки авторизации в HTML
-                    if (!html.includes('login') && !html.includes('Войти') && !html.includes('Sign In')) {
-                        showStatus('Авторизация подтверждена, ставлю лайк...', 'info');
-                    } else {
-                        showStatus('⚠️ Авторизация не подтверждена. Попробуйте еще раз.', 'error');
-                        // Не закрываем WebApp, даем возможность попробовать снова
-                        if (confirmBtn) {
-                            confirmBtn.disabled = false;
-                            confirmBtn.textContent = 'Я авторизовался, поставить лайк';
-                        }
-                        authChecked = false;
-                        return;
-                    }
-                }
-            } catch (e) {
-                console.error('Error checking auth:', e);
-                // Продолжаем попытку поставить лайк
-            }
+            // Проблема: cookies из iframe не доступны для основного окна из-за CORS
+            // Поэтому просто пытаемся поставить лайк - если пользователь авторизован в браузере Telegram,
+            // cookies должны быть доступны через credentials: 'include'
 
             // Пытаемся поставить лайк через fetch с credentials: 'include'
             // Это автоматически отправит cookies браузера
@@ -237,6 +265,7 @@
             ];
 
             let likeSuccess = false;
+            let lastError = '';
 
             for (const endpoint of likeEndpoints) {
                 try {
@@ -250,6 +279,7 @@
                         headers: {
                             'Content-Type': 'application/x-www-form-urlencoded',
                             'X-Requested-With': 'XMLHttpRequest',
+                            'Referer': pageUrl || 'https://deepskyhosting.com/',
                         },
                         credentials: 'include', // Автоматически отправляет cookies браузера
                         mode: 'cors',
@@ -258,17 +288,32 @@
 
                     if (response.ok) {
                         const text = await response.text();
+                        console.log('Like response:', text.substring(0, 200));
+                        
                         if (text.toLowerCase().includes('success') || 
                             text.toLowerCase().includes('liked') || 
                             text.trim().match(/^\d+$/) ||
                             response.status === 200) {
                             likeSuccess = true;
                             break;
+                        } else if (text.toLowerCase().includes('login') || 
+                                  text.toLowerCase().includes('auth') ||
+                                  text.toLowerCase().includes('unauthorized')) {
+                            lastError = 'Требуется авторизация';
+                        } else {
+                            lastError = `Неожиданный ответ: ${text.substring(0, 50)}`;
                         }
+                    } else {
+                        lastError = `HTTP ${response.status}`;
                     }
                 } catch (e) {
                     console.error('Failed to like via', endpoint.url, e);
+                    lastError = e.message;
                 }
+            }
+            
+            if (!likeSuccess && lastError) {
+                console.error('Like failed:', lastError);
             }
 
             // Отправляем результат боту
@@ -285,14 +330,19 @@
 
             if (likeSuccess) {
                 showStatus('✅ Лайк поставлен!', 'success');
+                // Закрываем WebApp через 1 секунду
+                setTimeout(() => {
+                    tg.close();
+                }, 1000);
             } else {
-                showStatus('⚠️ Лайк не поставлен', 'error');
+                showStatus(`⚠️ Лайк не поставлен. ${lastError ? 'Ошибка: ' + lastError : 'Проверьте авторизацию.'}`, 'error');
+                // Не закрываем WebApp, даем возможность попробовать снова
+                if (confirmBtn) {
+                    confirmBtn.disabled = false;
+                    confirmBtn.textContent = 'Попробовать еще раз';
+                    authChecked = false;
+                }
             }
-
-            // Закрываем WebApp через 1 секунду
-            setTimeout(() => {
-                tg.close();
-            }, 1000);
         }
 
     </script>
