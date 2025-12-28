@@ -119,27 +119,45 @@
                     const currentUrl = authFrame.contentWindow.location.href;
                     
                     // Проверяем признаки успешной авторизации
-                    // Убеждаемся, что это не просто переход на другую страницу
+                    // После успешной авторизации обычно происходит редирект на главную или профиль
                     if (currentUrl && (
-                        (currentUrl.includes('/id') && !currentUrl.includes('login')) || 
-                        (currentUrl.includes('logout') && !currentUrl.includes('login')) ||
-                        (!currentUrl.includes('login') && !currentUrl.includes('index.php?do=login'))
+                        currentUrl.includes('/id') || 
+                        (currentUrl === 'https://deepskyhosting.com/' || currentUrl === 'https://deepskyhosting.com/index.php') ||
+                        (currentUrl.includes('deepskyhosting.com') && !currentUrl.includes('login') && !currentUrl.includes('register'))
                     )) {
-                        // Возможно авторизованы, даем еще немного времени и проверяем
+                        // Проверяем, что это действительно авторизация, а не просто переход
+                        // Даем время на завершение редиректа
                         setTimeout(async () => {
                             if (!authChecked) {
-                                authChecked = true;
-                                clearInterval(checkInterval);
-                                showStatus('Авторизация обнаружена, ставлю лайк...', 'info');
-                                await tryLikeWithCookies();
+                                // Пытаемся проверить авторизацию через запрос к API
+                                try {
+                                    const testResponse = await fetch('https://deepskyhosting.com/', {
+                                        method: 'GET',
+                                        credentials: 'include',
+                                        mode: 'cors'
+                                    });
+                                    
+                                    if (testResponse.ok) {
+                                        authChecked = true;
+                                        clearInterval(checkInterval);
+                                        showStatus('Авторизация обнаружена, ставлю лайк...', 'info');
+                                        await tryLikeWithCookies();
+                                    }
+                                } catch (e) {
+                                    // Если не удалось проверить, все равно пытаемся поставить лайк
+                                    authChecked = true;
+                                    clearInterval(checkInterval);
+                                    showStatus('Ставлю лайк...', 'info');
+                                    await tryLikeWithCookies();
+                                }
                             }
-                        }, 2000);
+                        }, 3000);
                     }
                 } catch (e) {
                     // CORS блокирует доступ, это нормально
                     // Продолжаем проверку
                 }
-            }, 500);
+            }, 1000);
         }
 
         // Функция для ручного подтверждения авторизации
@@ -179,7 +197,36 @@
                 return;
             }
 
-            showStatus('Ставлю лайк...', 'info');
+            showStatus('Проверяю авторизацию и ставлю лайк...', 'info');
+            
+            // Сначала проверяем, авторизованы ли мы, делая запрос к главной странице
+            try {
+                const checkAuthResponse = await fetch('https://deepskyhosting.com/', {
+                    method: 'GET',
+                    credentials: 'include',
+                    mode: 'cors'
+                });
+                
+                if (checkAuthResponse.ok) {
+                    const html = await checkAuthResponse.text();
+                    // Проверяем признаки авторизации в HTML
+                    if (!html.includes('login') && !html.includes('Войти') && !html.includes('Sign In')) {
+                        showStatus('Авторизация подтверждена, ставлю лайк...', 'info');
+                    } else {
+                        showStatus('⚠️ Авторизация не подтверждена. Попробуйте еще раз.', 'error');
+                        // Не закрываем WebApp, даем возможность попробовать снова
+                        if (confirmBtn) {
+                            confirmBtn.disabled = false;
+                            confirmBtn.textContent = 'Я авторизовался, поставить лайк';
+                        }
+                        authChecked = false;
+                        return;
+                    }
+                }
+            } catch (e) {
+                console.error('Error checking auth:', e);
+                // Продолжаем попытку поставить лайк
+            }
 
             // Пытаемся поставить лайк через fetch с credentials: 'include'
             // Это автоматически отправит cookies браузера
