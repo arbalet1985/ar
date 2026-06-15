@@ -27,47 +27,54 @@
         }
         .controls {
             position: fixed;
-            bottom: 20px;
+            bottom: 12px;
             left: 50%;
             transform: translateX(-50%);
             z-index: 1000;
             background: var(--tg-color-secondary-bg, rgba(255,255,255,0.9));
             backdrop-filter: blur(20px);
-            padding: 20px;
-            border-radius: 20px;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
-            min-width: 300px;
-            max-width: 90%;
+            padding: 10px 12px;
+            border-radius: 14px;
+            box-shadow: 0 6px 24px rgba(0,0,0,0.35);
+            width: max-content;
+            max-width: 92%;
             text-align: center;
             border: 1px solid rgba(255,255,255,0.2);
         }
         .coordinates {
-            margin-bottom: 16px;
-            font-size: 16px;
+            margin-bottom: 8px;
+            font-size: 13px;
             font-weight: 600;
-            line-height: 1.4;
+            line-height: 1.3;
             white-space: pre-line;
             background: rgba(0,0,0,0.1);
-            padding: 12px;
-            border-radius: 12px;
+            padding: 7px 9px;
+            border-radius: 9px;
         }
         .status {
-            font-size: 14px;
-            opacity: 0.8;
-            margin-bottom: 12px;
+            font-size: 11px;
+            opacity: 0.75;
+            margin-bottom: 7px;
         }
         button {
             background: var(--tg-color-primary, #0088cc);
             color: var(--tg-color-button-text, #fff);
             border: none;
-            padding: 16px 24px;
-            border-radius: 16px;
+            padding: 10px 18px;
+            border-radius: 11px;
             cursor: pointer;
-            font-size: 17px;
+            font-size: 14px;
             font-weight: 600;
             width: 100%;
             transition: all 0.2s;
             box-shadow: 0 4px 16px rgba(0,136,204,0.4);
+        }
+        /* Телефоны: панель ещё компактнее, чтобы не закрывать карту */
+        @media (max-width: 480px) {
+            .controls { bottom: 8px; padding: 8px 10px; border-radius: 12px; }
+            .coordinates { font-size: 12px; padding: 6px 8px; margin-bottom: 6px; }
+            .status { font-size: 10px; margin-bottom: 5px; }
+            button { padding: 9px 14px; font-size: 13px; }
         }
         button:hover:not(:disabled) {
             background: var(--tg-color-primary, #0077b3);
