@@ -196,33 +196,17 @@
             
             console.log('🚀 Отправка в бот:', dataStr);
             
-            // ✅ Telegram WebApp (приоритет)
+            // Отправка возможна только внутри Telegram через sendData.
             if (tg?.sendData) {
                 tg.sendData(dataStr);
                 tg.close();
                 return;
             }
-            
-            // ✅ Копирование в буфер
-            navigator.clipboard.writeText(dataStr).then(() => {
-                alert(
-                    `✅ Координаты скопированы!\n\n` +
-                    `📋 ${dataStr}\n\n` +
-                    `Ctrl+V → вставьте в чат с ботом`
-                );
-            }).catch(() => {
-                // Fallback для старых браузеров
-                const ta = document.createElement('textarea');
-                ta.value = dataStr;
-                ta.style.position = 'fixed';
-                ta.style.opacity = '0';
-                document.body.appendChild(ta);
-                ta.focus();
-                ta.select();
-                document.execCommand('copy');
-                document.body.removeChild(ta);
-                alert(`✅ Скопировано!\n\n📋 ${dataStr}`);
-            });
+
+            // Вне Telegram (обычный браузер) бот не получит данные — буфер обмена
+            // не помогает (у бота нет приёма вставленного текста), поэтому
+            // просто подсказываем открыть карту из Telegram.
+            alert('⚠️ Откройте карту через кнопку «Выбрать на карте» в Telegram, чтобы отправить координаты боту.');
         }
 
         // Автоопределение местоположения
