@@ -197,22 +197,50 @@
                 alert('👆 Сначала выберите точку на карте!');
                 return;
             }
-            
+
             const data = { lat: parseFloat(selectedLat), lon: parseFloat(selectedLng) };
             const dataStr = JSON.stringify(data);
-            
+
             console.log('🚀 Отправка в бот:', dataStr);
-            
-            // Отправка возможна только внутри Telegram через sendData.
+
+            // Основной путь: sendData (работает на мобильных и части десктопа).
             if (tg?.sendData) {
                 tg.sendData(dataStr);
                 tg.close();
                 return;
             }
 
-            // Вне Telegram (обычный браузер) бот не получит данные — буфер обмена
-            // не помогает (у бота нет приёма вставленного текста), поэтому
-            // просто подсказываем открыть карту из Telegram.
+            // Десктопный fallback: sendData недоступен.
+            // На ПК бот принимает координаты текстом «56.852345 60.100234».
+            if (tg) {
+                const lat = parseFloat(selectedLat).toFixed(6);
+                const lon = parseFloat(selectedLng).toFixed(6);
+                const coordStr = `${lat} ${lon}`;
+
+                const coordsEl = document.getElementById('coords');
+                coordsEl.textContent = `📋 Скопируйте и отправьте боту:\n${coordStr}`;
+
+                const btn = document.getElementById('sendBtn');
+                btn.textContent = '📋 Скопировать координаты';
+                btn.disabled = false;
+                btn.onclick = () => {
+                    navigator.clipboard.writeText(coordStr)
+                        .then(() => {
+                            btn.textContent = '✅ Скопировано! Вставьте в чат с ботом';
+                            btn.disabled = true;
+                            setTimeout(() => tg.close(), 2500);
+                        })
+                        .catch(() => {
+                            // clipboard API недоступен — показываем строку для ручного копирования
+                            btn.textContent = coordStr;
+                            btn.style.fontSize = '12px';
+                            btn.style.wordBreak = 'break-all';
+                        });
+                };
+                return;
+            }
+
+            // Вне Telegram: подсказываем открыть из Telegram.
             alert('⚠️ Откройте карту через кнопку «Выбрать на карте» в Telegram, чтобы отправить координаты боту.');
         }
 
