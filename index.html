@@ -113,6 +113,8 @@
     <script>
         let map, marker, selectedLat = 57.6260, selectedLng = 60.1002; // Екатеринбург по умолчанию
         const tg = window.Telegram?.WebApp;
+        // ?bot=USERNAME дописывается ботом при создании кнопки — нужен для deep-link fallback
+        const botUsername = new URLSearchParams(location.search).get('bot');
 
         // Инициализация Telegram WebApp
         if (tg) {
@@ -211,32 +213,38 @@
             }
 
             // Десктопный fallback: sendData недоступен.
-            // На ПК бот принимает координаты текстом «56.852345 60.100234».
             if (tg) {
-                const lat = parseFloat(selectedLat).toFixed(6);
-                const lon = parseFloat(selectedLng).toFixed(6);
-                const coordStr = `${lat} ${lon}`;
-
-                const coordsEl = document.getElementById('coords');
-                coordsEl.textContent = `📋 Скопируйте и отправьте боту:\n${coordStr}`;
-
-                const btn = document.getElementById('sendBtn');
-                btn.textContent = '📋 Скопировать координаты';
-                btn.disabled = false;
-                btn.onclick = () => {
-                    navigator.clipboard.writeText(coordStr)
-                        .then(() => {
-                            btn.textContent = '✅ Скопировано! Вставьте в чат с ботом';
-                            btn.disabled = true;
-                            setTimeout(() => tg.close(), 2500);
-                        })
-                        .catch(() => {
-                            // clipboard API недоступен — показываем строку для ручного копирования
-                            btn.textContent = coordStr;
-                            btn.style.fontSize = '12px';
-                            btn.style.wordBreak = 'break-all';
-                        });
-                };
+                if (botUsername) {
+                    // Автоматический путь: openTelegramLink → бот получает /start wloc_LAT_LON
+                    // Координаты кодируются как целые (×1e6), точка недопустима в start-параметре.
+                    const latInt = Math.round(parseFloat(selectedLat) * 1e6);
+                    const lonInt = Math.round(parseFloat(selectedLng) * 1e6);
+                    tg.openTelegramLink(`https://t.me/${botUsername}?start=wloc_${latInt}_${lonInt}`);
+                    tg.close();
+                } else {
+                    // botUsername не передан — fallback: копировать координаты вручную.
+                    const lat = parseFloat(selectedLat).toFixed(6);
+                    const lon = parseFloat(selectedLng).toFixed(6);
+                    const coordStr = `${lat} ${lon}`;
+                    const coordsEl = document.getElementById('coords');
+                    coordsEl.textContent = `📋 Скопируйте и отправьте боту:\n${coordStr}`;
+                    const btn = document.getElementById('sendBtn');
+                    btn.textContent = '📋 Скопировать координаты';
+                    btn.disabled = false;
+                    btn.onclick = () => {
+                        navigator.clipboard.writeText(coordStr)
+                            .then(() => {
+                                btn.textContent = '✅ Скопировано! Вставьте в чат с ботом';
+                                btn.disabled = true;
+                                setTimeout(() => tg.close(), 2500);
+                            })
+                            .catch(() => {
+                                btn.textContent = coordStr;
+                                btn.style.fontSize = '12px';
+                                btn.style.wordBreak = 'break-all';
+                            });
+                    };
+                }
                 return;
             }
 
