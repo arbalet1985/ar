@@ -1,0 +1,536 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0e1f">
+<title>Астропрогноз</title>
+<!--
+  Интерактивная страница прогноза (Telegram WebApp).
+
+  Раздаётся статикой (GitHub Pages) рядом с map-picker.html, своих ключей к API
+  не имеет: все данные приходят из бота во фрагменте URL (#d=<base64url(json)>),
+  формат — src/forecast_webapp.py. Фрагмент не уходит на сервер хостинга,
+  поэтому координаты не попадают в чужие логи.
+
+  Подписи продублированы из src/i18n/features/forecast_card_text.py — меняешь
+  строку там, поменяй и здесь (страница самодостаточна, чтобы не раздувать URL).
+-->
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root{
+    --bg-0:#070b18; --bg-1:#0d1430;
+    --card:rgba(255,255,255,.045); --card-brd:rgba(255,255,255,.09);
+    --ink:#e9edfb; --ink-2:#9aa6cc; --ink-3:#616d96; --grid:rgba(255,255,255,.07);
+    --c-temp:#ff6f6b; --c-wind:#2fd4cf; --c-cloud:#5b9dff; --c-cloud-mid:#b07cff;
+    --c-cloud-hi:#ff8b6b; --c-cloud-tot:#c9d4ff; --c-seeing:#b07cff; --c-humid:#38c9e8;
+    --c-moon:#ffd27a; --c-sun:#ffcf4d; --c-jet:#ff9f45;
+    --ok:#4ad991; --warn:#ffcf4d; --bad:#ff6f6b; --r:20px;
+  }
+  *{box-sizing:border-box}
+  html{background:var(--bg-0)}
+  html,body{margin:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    color:var(--ink); min-height:100dvh; -webkit-font-smoothing:antialiased;
+    padding:0 14px calc(34px + env(safe-area-inset-bottom));
+    font-variant-numeric:tabular-nums; line-height:1.4;
+  }
+  /* фон отдельным слоем, а не background-attachment:fixed — тот ломается
+     в вебвью при длинной странице (ниже первого экрана остаётся пустота) */
+  .backdrop{
+    position:fixed; inset:0; z-index:-1; pointer-events:none;
+    background:
+      radial-gradient(120% 80% at 15% -10%, #1c2a5e 0%, rgba(28,42,94,0) 55%),
+      radial-gradient(140% 90% at 95% 0%, #3a1f57 0%, rgba(58,31,87,0) 45%),
+      linear-gradient(180deg,var(--bg-1) 0%, var(--bg-0) 60%);
+  }
+  .wrap{max-width:840px;margin:0 auto}
+
+  header{padding:26px 4px 14px}
+  .kicker{display:flex;align-items:center;gap:8px;color:var(--ink-2);font-size:13px;font-weight:500}
+  .kicker .dot{width:7px;height:7px;border-radius:50%;background:var(--c-moon);box-shadow:0 0 10px var(--c-moon)}
+  h1{margin:6px 0 4px;font-size:clamp(26px,7vw,38px);font-weight:700;letter-spacing:-.02em;line-height:1.05}
+  .place{color:var(--ink-2);font-size:14px}
+  .place b{color:var(--ink);font-weight:600}
+
+  .grid{display:grid;grid-template-columns:1fr;gap:14px}
+  @media(min-width:720px){ .grid{grid-template-columns:1fr 1fr} .span-2{grid-column:1 / -1} }
+
+  .verdict{
+    grid-column:1/-1; border-radius:26px; padding:22px 20px; position:relative; overflow:hidden;
+    border:1px solid var(--card-brd);
+    background:linear-gradient(160deg, rgba(255,111,107,.16), rgba(13,20,48,.4) 60%);
+  }
+  .verdict.-ok{background:linear-gradient(160deg, rgba(74,217,145,.16), rgba(13,20,48,.4) 60%)}
+  .verdict.-warn{background:linear-gradient(160deg, rgba(255,207,77,.16), rgba(13,20,48,.4) 60%)}
+  .verdict .tag{font-size:13px;color:var(--ink-2);margin-bottom:6px;max-width:64%}
+  .verdict .status{font-size:clamp(28px,8vw,44px);font-weight:800;letter-spacing:-.03em}
+  .status.-bad{color:var(--bad)} .status.-ok{color:var(--ok)} .status.-warn{color:var(--warn)}
+  .verdict .why{margin:10px 0 0;color:var(--ink-2);font-size:15px;max-width:46ch}
+  .verdict .why b{color:var(--ink);font-weight:600}
+  .score-ring{position:absolute;top:18px;right:18px;width:76px;height:76px}
+
+  .factors{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+  .factor{flex:1 1 auto;min-width:96px;background:rgba(255,255,255,.04);
+    border:1px solid var(--card-brd);border-radius:14px;padding:9px 11px}
+  .factor .fl{font-size:12px;color:var(--ink-3);display:flex;align-items:center;gap:6px}
+  .factor .fl i{width:7px;height:7px;border-radius:50%;display:inline-block}
+  .factor .fv{font-size:17px;font-weight:700;margin-top:2px}
+  .factor .fs{font-size:11px;font-weight:600}
+  .fs.-ok{color:var(--ok)} .fs.-warn{color:var(--warn)} .fs.-bad{color:var(--bad)}
+
+  .card{background:var(--card);border:1px solid var(--card-brd);border-radius:var(--r);
+    padding:16px 15px 12px;backdrop-filter:blur(6px)}
+  .card .top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+  .card .title{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--ink-2);font-weight:600}
+  .card .title i{width:9px;height:9px;border-radius:3px;display:inline-block}
+  .readout{text-align:right}
+  .readout .big{font-size:26px;font-weight:750;letter-spacing:-.02em;line-height:1}
+  .readout .unit{font-size:14px;color:var(--ink-2);font-weight:600}
+  .readout .sub{font-size:12px;color:var(--ink-3);margin-top:2px}
+  .legend{display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;font-size:11px;color:var(--ink-3)}
+  .legend span{display:flex;align-items:center;gap:5px}
+  .legend i{width:12px;height:2px;border-radius:2px;display:inline-block}
+  .chartbox{margin-top:10px;position:relative;touch-action:pan-y;
+    -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+  svg.chart{display:block;width:100%;height:auto}
+  .axis text{fill:var(--ink-3);font-size:10px;font-weight:500}
+  .scrub-hint{font-size:11px;color:var(--ink-3);margin-top:6px;text-align:center;opacity:.7}
+
+  .moon-row{display:flex;align-items:center;gap:16px;margin-top:12px}
+  .moon-disc{width:74px;height:74px;flex:0 0 auto}
+  .moon-meta .m1{font-size:24px;font-weight:750}
+  .moon-meta .m2{font-size:13px;color:var(--ink-2);margin-top:2px}
+
+  .map{grid-column:1/-1}
+  .map .coords{display:flex;gap:18px;flex-wrap:wrap;margin-top:10px;color:var(--ink-2);font-size:13px}
+  .map .coords b{color:var(--ink);font-weight:600}
+
+  .empty{margin:60px auto;max-width:420px;text-align:center;color:var(--ink-2);font-size:15px}
+  footer{color:var(--ink-3);font-size:12px;text-align:center;padding:22px 8px 6px;line-height:1.6}
+</style>
+</head>
+<body>
+<div class="backdrop"></div>
+<div class="wrap">
+  <header>
+    <div class="kicker"><span class="dot"></span><span id="kicker"></span></div>
+    <h1 id="h1">Астропрогноз</h1>
+    <div class="place" id="place"></div>
+  </header>
+  <div class="grid" id="grid"></div>
+  <div class="empty" id="empty" hidden></div>
+  <footer id="footer"></footer>
+</div>
+
+<script>
+"use strict";
+
+/* ===== Подписи (зеркало src/i18n/features/forecast_card_text.py) ===== */
+const L = {
+  ru:{title:"Астропрогноз",night_conditions:"Условия для наблюдений ночью",good:"Хорошая ночь",mid:"Средне",bad:"Плохо",of100:"из 100",cloud:"Облачность",cloud_layers:"Облачность (слоями)",layer_total:"общая",layer_low:"нижняя",layer_mid:"средняя",layer_high:"верхняя",seeing:"Seeing",wind:"Ветер",wind_jet:"Ветер и джет-стрим",jet:"Джет",jet_calm:"слабый",jet_fair:"умеренный",jet_strong:"сильный",why_jet:" Джет-стрим ≈{jet} {ms}.",temp:"Температура",humidity:"Влажность",sun_alt:"Солнце: высота",moon:"Луна",now:"сейчас",arcsec_now:"arcsec, сейчас",total_now:"общая, сейчас",above_horizon:"над горизонтом",illumination:"освещённость",ms:"м/с",cloud_high_lvl:"высокая",cloud_mid_lvl:"умеренная",cloud_low_lvl:"низкая",seeing_good:"хороший",seeing_fair:"средний",seeing_poor:"слабый",wind_calm:"слабый",wind_fair:"умеренный",wind_strong:"сильный",moon_dark:"тёмное небо",moon_bright:"засветка",moon_new:"Новолуние",moon_cres:"Растущий серп",moon_half:"Половина диска",moon_gib:"Почти полная",moon_full:"Полнолуние",moon_below:"Ночью Луна за горизонтом — небо тёмное.",moon_above:"Ночью Луна над горизонтом — небо подсвечено.",no_night:"Ночного окна в этом периоде нет — Солнце не опускается ниже −6°.",why:"Облачность ночью ≈{cloud}%, seeing ≈{seeing}″, ветер ≈{wind} {ms}, Луна {moon}%.",footer:"Порог «ясно»: облачность < {cloud}%, Солнце ниже {sun}°  ·  источник: {src}",scrub:"проведите по графику, чтобы посмотреть по часам",location:"Местоположение",lat:"Широта",lon:"Долгота",tz:"Пояс",empty:"Откройте прогноз кнопкой в боте — страница показывает данные, переданные из чата."},
+  en:{title:"Astro forecast",night_conditions:"Observing conditions tonight",good:"Good night",mid:"So-so",bad:"Poor",of100:"of 100",cloud:"Cloud cover",cloud_layers:"Cloud cover (by layer)",layer_total:"total",layer_low:"low",layer_mid:"mid",layer_high:"high",seeing:"Seeing",wind:"Wind",wind_jet:"Wind and jet stream",jet:"Jet",jet_calm:"weak",jet_fair:"moderate",jet_strong:"strong",why_jet:" Jet stream ≈{jet} {ms}.",temp:"Temperature",humidity:"Humidity",sun_alt:"Sun: altitude",moon:"Moon",now:"now",arcsec_now:"arcsec, now",total_now:"total, now",above_horizon:"above horizon",illumination:"illumination",ms:"m/s",cloud_high_lvl:"high",cloud_mid_lvl:"moderate",cloud_low_lvl:"low",seeing_good:"good",seeing_fair:"fair",seeing_poor:"poor",wind_calm:"light",wind_fair:"moderate",wind_strong:"strong",moon_dark:"dark sky",moon_bright:"sky glow",moon_new:"New Moon",moon_cres:"Crescent",moon_half:"Half disc",moon_gib:"Nearly full",moon_full:"Full Moon",moon_below:"The Moon stays below the horizon tonight — dark sky.",moon_above:"The Moon is up tonight — the sky is lit.",no_night:"No night window in this period — the Sun stays above −6°.",why:"Cloud cover at night ≈{cloud}%, seeing ≈{seeing}″, wind ≈{wind} {ms}, Moon {moon}%.",footer:"«Clear» threshold: clouds < {cloud}%, Sun below {sun}°  ·  source: {src}",scrub:"swipe across the chart to inspect hour by hour",location:"Location",lat:"Latitude",lon:"Longitude",tz:"Time zone",empty:"Open the forecast from the bot button — this page shows data passed from the chat."},
+  de:{title:"Astro-Prognose",night_conditions:"Beobachtungsbedingungen heute Nacht",good:"Gute Nacht",mid:"Mittelmäßig",bad:"Schlecht",of100:"von 100",cloud:"Bewölkung",cloud_layers:"Bewölkung (nach Schichten)",layer_total:"gesamt",layer_low:"tief",layer_mid:"mittel",layer_high:"hoch",seeing:"Seeing",wind:"Wind",wind_jet:"Wind und Jetstream",jet:"Jet",jet_calm:"schwach",jet_fair:"mäßig",jet_strong:"stark",why_jet:" Jetstream ≈{jet} {ms}.",temp:"Temperatur",humidity:"Luftfeuchte",sun_alt:"Sonne: Höhe",moon:"Mond",now:"jetzt",arcsec_now:"Bogensekunden, jetzt",total_now:"gesamt, jetzt",above_horizon:"über dem Horizont",illumination:"Beleuchtung",ms:"m/s",cloud_high_lvl:"hoch",cloud_mid_lvl:"mäßig",cloud_low_lvl:"gering",seeing_good:"gut",seeing_fair:"mäßig",seeing_poor:"schlecht",wind_calm:"schwach",wind_fair:"mäßig",wind_strong:"stark",moon_dark:"dunkler Himmel",moon_bright:"Aufhellung",moon_new:"Neumond",moon_cres:"Sichel",moon_half:"Halbmond",moon_gib:"Fast voll",moon_full:"Vollmond",moon_below:"Der Mond bleibt heute Nacht unter dem Horizont — dunkler Himmel.",moon_above:"Der Mond steht heute Nacht am Himmel — er hellt ihn auf.",no_night:"In diesem Zeitraum gibt es kein Nachtfenster — die Sonne bleibt über −6°.",why:"Bewölkung nachts ≈{cloud}%, Seeing ≈{seeing}″, Wind ≈{wind} {ms}, Mond {moon}%.",footer:"«Klar»-Schwelle: Bewölkung < {cloud}%, Sonne unter {sun}°  ·  Quelle: {src}",scrub:"über das Diagramm wischen, um Stunde für Stunde zu sehen",location:"Standort",lat:"Breite",lon:"Länge",tz:"Zeitzone",empty:"Öffne die Prognose über die Schaltfläche im Bot — die Seite zeigt die aus dem Chat übergebenen Daten."},
+  fr:{title:"Prévisions astro",night_conditions:"Conditions d'observation cette nuit",good:"Bonne nuit",mid:"Moyen",bad:"Mauvais",of100:"sur 100",cloud:"Nébulosité",cloud_layers:"Nébulosité (par couches)",layer_total:"totale",layer_low:"basse",layer_mid:"moyenne",layer_high:"haute",seeing:"Seeing",wind:"Vent",wind_jet:"Vent et courant-jet",jet:"Jet",jet_calm:"faible",jet_fair:"modéré",jet_strong:"fort",why_jet:" Courant-jet ≈{jet} {ms}.",temp:"Température",humidity:"Humidité",sun_alt:"Soleil : hauteur",moon:"Lune",now:"maintenant",arcsec_now:"secondes d'arc, maintenant",total_now:"totale, maintenant",above_horizon:"sur l'horizon",illumination:"illumination",ms:"m/s",cloud_high_lvl:"élevée",cloud_mid_lvl:"modérée",cloud_low_lvl:"faible",seeing_good:"bon",seeing_fair:"moyen",seeing_poor:"mauvais",wind_calm:"faible",wind_fair:"modéré",wind_strong:"fort",moon_dark:"ciel sombre",moon_bright:"ciel éclairé",moon_new:"Nouvelle Lune",moon_cres:"Croissant",moon_half:"Demi-disque",moon_gib:"Presque pleine",moon_full:"Pleine Lune",moon_below:"La Lune reste sous l'horizon cette nuit — ciel sombre.",moon_above:"La Lune est levée cette nuit — le ciel est éclairé.",no_night:"Pas de fenêtre nocturne sur cette période — le Soleil reste au-dessus de −6°.",why:"Nébulosité la nuit ≈{cloud}%, seeing ≈{seeing}″, vent ≈{wind} {ms}, Lune {moon}%.",footer:"Seuil « clair » : nuages < {cloud}%, Soleil sous {sun}°  ·  source : {src}",scrub:"balayez le graphique pour voir heure par heure",location:"Position",lat:"Latitude",lon:"Longitude",tz:"Fuseau",empty:"Ouvrez les prévisions depuis le bouton du bot — cette page affiche les données transmises depuis le chat."},
+  es:{title:"Pronóstico astro",night_conditions:"Condiciones de observación esta noche",good:"Buena noche",mid:"Regular",bad:"Malo",of100:"de 100",cloud:"Nubosidad",cloud_layers:"Nubosidad (por capas)",layer_total:"total",layer_low:"baja",layer_mid:"media",layer_high:"alta",seeing:"Seeing",wind:"Viento",wind_jet:"Viento y corriente en chorro",jet:"Chorro",jet_calm:"flojo",jet_fair:"moderado",jet_strong:"fuerte",why_jet:" Corriente en chorro ≈{jet} {ms}.",temp:"Temperatura",humidity:"Humedad",sun_alt:"Sol: altura",moon:"Luna",now:"ahora",arcsec_now:"segundos de arco, ahora",total_now:"total, ahora",above_horizon:"sobre el horizonte",illumination:"iluminación",ms:"m/s",cloud_high_lvl:"alta",cloud_mid_lvl:"moderada",cloud_low_lvl:"baja",seeing_good:"bueno",seeing_fair:"regular",seeing_poor:"malo",wind_calm:"flojo",wind_fair:"moderado",wind_strong:"fuerte",moon_dark:"cielo oscuro",moon_bright:"cielo iluminado",moon_new:"Luna nueva",moon_cres:"Creciente",moon_half:"Medio disco",moon_gib:"Casi llena",moon_full:"Luna llena",moon_below:"Esta noche la Luna queda bajo el horizonte — cielo oscuro.",moon_above:"Esta noche la Luna está sobre el horizonte — el cielo se ilumina.",no_night:"No hay ventana nocturna en este periodo — el Sol no baja de −6°.",why:"Nubosidad nocturna ≈{cloud}%, seeing ≈{seeing}″, viento ≈{wind} {ms}, Luna {moon}%.",footer:"Umbral «despejado»: nubes < {cloud}%, Sol bajo {sun}°  ·  fuente: {src}",scrub:"desliza por el gráfico para ver hora a hora",location:"Ubicación",lat:"Latitud",lon:"Longitud",tz:"Zona",empty:"Abre el pronóstico con el botón del bot: esta página muestra los datos enviados desde el chat."}
+};
+
+const CLEAR_CLOUD = 20, NIGHT_SUN = -12;
+const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+const IDX = {}; for (let i = 0; i < ALPHABET.length; i++) IDX[ALPHABET[i]] = i;
+
+/* ===== Разбор payload ===== */
+function rawPayload(){
+  // Telegram дописывает свои параметры (#tgWebAppData=…) в тот же фрагмент —
+  // поэтому ищем свой ключ среди частей, а не берём фрагмент целиком.
+  const parts = [];
+  const push = s => { if (s) s.replace(/^[#?]/, "").split("&").forEach(p => parts.push(p)); };
+  push(location.hash); push(location.search);
+  for (const p of parts) if (p.startsWith("d=")) return decodeURIComponent(p.slice(2));
+  return null;
+}
+function b64urlToJson(s){
+  const b64 = s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4);
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return JSON.parse(new TextDecoder("utf-8").decode(bytes));
+}
+function decodeSeries(packed){
+  if (!packed) return null;
+  const [lo, hi, chars] = packed;
+  const out = [];
+  for (const ch of chars) out.push(hi === lo ? lo : lo + (IDX[ch] || 0) / 63 * (hi - lo));
+  return out;
+}
+
+/* ===== SVG-хелперы ===== */
+const VW = 320, VH = 132, PL = 8, PR = 8, PT = 12, PB = 20;
+let uid = 0, N = 0, HH = [];
+const px = i => PL + (VW - PL - PR) * (N > 1 ? i / (N - 1) : 0.5);
+const py = (v, min, max) => PT + (VH - PT - PB) * (1 - (v - min) / ((max - min) || 1));
+
+function tickIdx(){
+  if (N <= 1) return [0];
+  const s = new Set();
+  for (let i = 0; i < 5; i++) s.add(Math.round(i * (N - 1) / 4));
+  return [...s].sort((a, b) => a - b);
+}
+function axisLabels(){
+  const multiday = HH.some(l => l.length > 5);
+  const idx = tickIdx();
+  return idx.map((i, k) => {
+    const anchor = k === 0 ? "start" : k === idx.length - 1 ? "end" : "middle";
+    return `<text x="${px(i).toFixed(1)}" y="${VH - 6}" text-anchor="${anchor}"${multiday ? ' font-size="8"' : ""}>${HH[i]}</text>`;
+  }).join("");
+}
+function gridlines(min, max, steps){
+  let s = "";
+  for (let k = 0; k <= steps; k++){
+    const y = py(min + (max - min) * k / steps, min, max);
+    s += `<line x1="${PL}" y1="${y.toFixed(1)}" x2="${VW - PR}" y2="${y.toFixed(1)}" stroke="var(--grid)" stroke-width="1"/>`;
+  }
+  return s;
+}
+function nightBands(night, min, max){
+  if (!night || !night.length) return "";
+  let out = "", start = night[0], prev = night[0];
+  const band = (a, b) => {
+    const x1 = px(Math.max(0, a - 0.5)), x2 = px(Math.min(N - 1, b + 0.5));
+    return `<rect x="${x1.toFixed(1)}" y="${PT}" width="${Math.max(0, x2 - x1).toFixed(1)}" height="${VH - PT - PB}" fill="#5b9dff" opacity=".07"/>`;
+  };
+  for (let k = 1; k < night.length; k++){
+    if (night[k] !== prev + 1){ out += band(start, prev); start = night[k]; }
+    prev = night[k];
+  }
+  return out + band(start, prev);
+}
+function threshold(v, min, max, color){
+  const y = py(v, min, max);
+  return `<line x1="${PL}" y1="${y.toFixed(1)}" x2="${VW - PR}" y2="${y.toFixed(1)}" stroke="${color}" stroke-width="1.2" stroke-dasharray="4 4" opacity=".6"/>`;
+}
+function lineChart(vals, o){
+  const id = ++uid, {color, min, max} = o;
+  const pts = vals.map((v, i) => [px(i), py(v, min, max)]);
+  const d = pts.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" ");
+  const area = `M ${PL} ${py(min, min, max).toFixed(1)} ` +
+    pts.map(p => "L" + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" ") +
+    ` L ${VW - PR} ${py(min, min, max).toFixed(1)} Z`;
+  return `<defs><linearGradient id="g${id}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="${color}" stop-opacity=".34"/>
+      <stop offset="1" stop-color="${color}" stop-opacity="0"/></linearGradient></defs>
+    ${gridlines(min, max, 4)}${o.bands || ""}
+    <path d="${area}" fill="url(#g${id})"/>
+    ${(o.thresholds || []).map(th => threshold(th[0], min, max, th[1])).join("")}
+    <path d="${d}" fill="none" stroke="${color}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+    ${axisLabels()}`;
+}
+function multiLine(series, o){
+  let out = gridlines(o.min, o.max, 4) + (o.bands || "");
+  (o.thresholds || []).forEach(th => { out += threshold(th[0], o.min, o.max, th[1]); });
+  series.forEach(s => {
+    const d = s.vals.map((v, i) => (i ? "L" : "M") + px(i).toFixed(1) + " " + py(v, o.min, o.max).toFixed(1)).join(" ");
+    out += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="${s.w || 2}" stroke-linejoin="round" stroke-linecap="round" ${s.dash ? 'stroke-dasharray="5 4"' : ""} vector-effect="non-scaling-stroke"/>`;
+  });
+  return out + axisLabels();
+}
+function barChart(vals, o){
+  let out = gridlines(o.min, o.max, 4) + (o.bands || "");
+  (o.thresholds || []).forEach(th => { out += threshold(th[0], o.min, o.max, th[1]); });
+  const bw = (VW - PL - PR) / vals.length * 0.66, base = py(o.min, o.min, o.max);
+  vals.forEach((v, i) => {
+    const x = px(i) - bw / 2, y = py(v, o.min, o.max);
+    out += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(0, base - y).toFixed(1)}" rx="2.5" fill="${o.colorFn(v)}"/>`;
+  });
+  return out + axisLabels();
+}
+function nowMarker(now){
+  const x = px(now).toFixed(1);
+  return `<line class="nowline" x1="${x}" y1="${PT}" x2="${x}" y2="${VH - PB}" stroke="#fff" stroke-width="1" opacity=".35" stroke-dasharray="3 3"/>
+          <circle class="nowdot" cx="${x}" cy="${PT}" r="0" fill="#fff"/>`;
+}
+
+/* ===== Карточка метрики со скрабом ===== */
+function metricCard(cfg){
+  const el = document.createElement("section");
+  el.className = "card" + (cfg.wide ? " span-2" : "");
+  const legend = (cfg.legend || []).map(([label, color]) =>
+    `<span><i style="background:${color}"></i>${label}</span>`).join("");
+  el.innerHTML = `
+    <div class="top">
+      <div class="title"><i style="background:${cfg.color}"></i>${cfg.title}</div>
+      <div class="readout">
+        <div class="big" style="color:${cfg.color}"><span data-val>${cfg.fmt(cfg.vals[cfg.now])}</span><span class="unit">${cfg.unit}</span></div>
+        <div class="sub" data-sub>${cfg.sub}</div>
+      </div>
+    </div>
+    ${legend ? `<div class="legend">${legend}</div>` : ""}
+    <div class="chartbox">
+      <svg class="chart" viewBox="0 0 ${VW} ${VH}" preserveAspectRatio="none">
+        <g class="axis">${cfg.inner}${nowMarker(cfg.now)}</g>
+      </svg>
+    </div>
+    <div class="scrub-hint">${cfg.hint}</div>`;
+
+  const box = el.querySelector(".chartbox");
+  const valEl = el.querySelector("[data-val]");
+  const subEl = el.querySelector("[data-sub]");
+  const line = el.querySelector(".nowline");
+  const dot = el.querySelector(".nowdot");
+  function upd(i){
+    valEl.textContent = cfg.fmt(cfg.vals[i]);
+    subEl.textContent = HH[i];
+    const x = px(i).toFixed(1);
+    line.setAttribute("x1", x); line.setAttribute("x2", x); line.setAttribute("opacity", ".75");
+    dot.setAttribute("cx", x); dot.setAttribute("r", "2.6");
+  }
+  function reset(){
+    valEl.textContent = cfg.fmt(cfg.vals[cfg.now]); subEl.textContent = cfg.sub;
+    const x = px(cfg.now).toFixed(1);
+    line.setAttribute("x1", x); line.setAttribute("x2", x); line.setAttribute("opacity", ".35");
+    dot.setAttribute("cx", x); dot.setAttribute("r", "0");
+  }
+  function fromEvt(e){
+    const r = box.getBoundingClientRect();
+    const cx = (e.touches ? e.touches[0].clientX : e.clientX) - r.left;
+    const frac = Math.min(1, Math.max(0, (cx / r.width - PL / VW) / ((VW - PL - PR) / VW)));
+    upd(Math.round(frac * (N - 1)));
+  }
+  box.addEventListener("pointerdown", e => { fromEvt(e); try { box.setPointerCapture(e.pointerId); } catch (_e) {} });
+  box.addEventListener("pointermove", e => { if (e.pressure > 0 || e.buttons || e.pointerType === "touch") fromEvt(e); });
+  box.addEventListener("pointerup", reset);
+  box.addEventListener("pointerleave", e => { if (!e.buttons) reset(); });
+  return el;
+}
+
+/* ===== Рендер ===== */
+function fmtTemplate(s, vars){ return s.replace(/\{(\w+)\}/g, (_m, k) => vars[k]); }
+
+function moonPhaseKey(illum){
+  if (illum < 8) return "moon_new";
+  if (illum < 38) return "moon_cres";
+  if (illum < 62) return "moon_half";
+  if (illum < 92) return "moon_gib";
+  return "moon_full";
+}
+
+function buildLabels(p){
+  const [d, tm] = p.t0.split("T");
+  const [Y, M, D] = d.split("-").map(Number);
+  const [h, mi] = tm.split(":").map(Number);
+  const start = Date.UTC(Y, M - 1, D, h, mi);          // UTC-арифметика над локальными значениями
+  const spanH = p.step * (p.n - 1) / 60;
+  const out = [];
+  for (let i = 0; i < p.n; i++){
+    const t = new Date(start + i * p.step * 60000);
+    const hh = String(t.getUTCHours()).padStart(2, "0");
+    const mm = String(t.getUTCMinutes()).padStart(2, "0");
+    out.push(spanH > 26
+      ? `${String(t.getUTCDate()).padStart(2, "0")}.${String(t.getUTCMonth() + 1).padStart(2, "0")} ${hh}`
+      : `${hh}:${mm}`);
+  }
+  return out;
+}
+
+function render(p){
+  const T = L[p.lang] || L.ru;
+  const S = p.s;
+  const temp = decodeSeries(S.t), wind = decodeSeries(S.w), seeing = decodeSeries(S.e),
+        humid = decodeSeries(S.h), cloud = decodeSeries(S.c), sun = decodeSeries(S.sa),
+        cloudLo = decodeSeries(S.cl), cloudMi = decodeSeries(S.cm), cloudHi = decodeSeries(S.ch),
+        jet = decodeSeries(S.j);
+  N = p.n; HH = buildLabels(p);
+  const now = Math.min(p.now, N - 1);
+  const bands = nightBands(p.night, 0, 1);
+
+  document.documentElement.lang = p.lang;
+  document.getElementById("h1").textContent = T.title;
+  document.title = T.title;
+  const tz = p.tzn ? `${p.tzn.split("/").pop().replace(/_/g, " ")} (UTC${p.tz >= 0 ? "+" : ""}${p.tz})`
+                   : `UTC${p.tz >= 0 ? "+" : ""}${p.tz}`;
+  document.getElementById("kicker").textContent = `${HH[now]} · ${tz}`;
+  document.getElementById("place").innerHTML =
+    (p.loc ? `<b>${p.loc}</b> · ` : "") + `${p.lat.toFixed(4)}°, ${p.lon.toFixed(4)}°`;
+  document.getElementById("footer").textContent =
+    fmtTemplate(T.footer, {cloud: CLEAR_CLOUD, sun: NIGHT_SUN, src: p.src === "meteoblue" ? "Meteoblue" : "7Timer"});
+
+  const grid = document.getElementById("grid");
+
+  /* --- вердикт --- */
+  const lvlCls = p.lvl === "good" ? "-ok" : p.lvl === "mid" ? "-warn" : "-bad";
+  const verdict = document.createElement("section");
+  verdict.className = "verdict " + lvlCls;
+  const C = 2 * Math.PI * 30;
+  const ringCol = p.lvl === "good" ? "var(--ok)" : p.lvl === "mid" ? "var(--warn)" : "var(--bad)";
+  let why = fmtTemplate(T.why, {
+    cloud: Math.round(p.avg.c), seeing: p.avg.e.toFixed(2),
+    wind: Math.round(p.avg.w), ms: T.ms, moon: Math.round(p.moon),
+  });
+  if (p.avg.j != null) why += fmtTemplate(T.why_jet, {jet: Math.round(p.avg.j), ms: T.ms});
+  const moonNote = p.hasNight ? (p.moonUp ? T.moon_above : T.moon_below) : T.no_night;
+  verdict.innerHTML = `
+    <svg class="score-ring" viewBox="0 0 76 76" aria-hidden="true">
+      <circle cx="38" cy="38" r="30" fill="none" stroke="rgba(255,255,255,.1)" stroke-width="7"/>
+      <circle cx="38" cy="38" r="30" fill="none" stroke="${ringCol}" stroke-width="7" stroke-linecap="round"
+        stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - p.sc / 100)}" transform="rotate(-90 38 38)"/>
+      <text x="38" y="41" text-anchor="middle" fill="var(--ink)" font-size="19" font-weight="700">${p.sc}</text>
+      <text x="38" y="53" text-anchor="middle" fill="var(--ink-3)" font-size="8">${T.of100}</text>
+    </svg>
+    <div class="tag">${T.night_conditions}</div>
+    <div class="status ${lvlCls}">${T[p.lvl]}</div>
+    <p class="why">${why}<br>${moonNote}</p>
+    <div class="factors"></div>`;
+  const cloudLvl = p.avg.c > 70 ? ["-bad", T.cloud_high_lvl] : p.avg.c > 40 ? ["-warn", T.cloud_mid_lvl] : ["-ok", T.cloud_low_lvl];
+  const seeLvl = p.avg.e <= 1.5 ? ["-ok", T.seeing_good] : p.avg.e <= 1.9 ? ["-warn", T.seeing_fair] : ["-bad", T.seeing_poor];
+  const windLvl = p.avg.w <= 7 ? ["-ok", T.wind_calm] : p.avg.w <= 9 ? ["-warn", T.wind_fair] : ["-bad", T.wind_strong];
+  const moonLvl = (p.moonUp && p.moon > 40) ? ["-warn", T.moon_bright] : ["-ok", T.moon_dark];
+  // джет для seeing важнее приземного ветра — он и занимает третий фактор
+  const thirdFactor = p.avg.j != null
+    ? [T.jet, "var(--c-jet)", Math.round(p.avg.j) + " " + T.ms,
+       p.avg.j <= 30 ? ["-ok", T.jet_calm] : p.avg.j <= 50 ? ["-warn", T.jet_fair] : ["-bad", T.jet_strong]]
+    : [T.wind, "var(--c-wind)", Math.round(p.avg.w) + " " + T.ms, windLvl];
+  verdict.querySelector(".factors").innerHTML = [
+    [T.cloud, "var(--c-cloud)", Math.round(p.avg.c) + "%", cloudLvl],
+    [T.seeing, "var(--c-seeing)", p.avg.e.toFixed(2) + "″", seeLvl],
+    thirdFactor,
+    [T.moon, "var(--c-moon)", Math.round(p.moon) + "%", moonLvl],
+  ].map(([l, c, v, st]) => `
+    <div class="factor">
+      <div class="fl"><i style="background:${c}"></i>${l}</div>
+      <div class="fv">${v}</div>
+      <div class="fs ${st[0]}">${st[1]}</div>
+    </div>`).join("");
+  grid.appendChild(verdict);
+
+  /* --- облачность --- */
+  const hasLayers = !!(cloudLo && cloudMi && cloudHi);
+  const series = [{vals: cloud, color: "var(--c-cloud-tot)", w: 2.6, dash: true}];
+  const legend = [[T.layer_total, "var(--c-cloud-tot)"]];
+  if (hasLayers){
+    series.push({vals: cloudLo, color: "var(--c-cloud)", w: 2});
+    series.push({vals: cloudMi, color: "var(--c-cloud-mid)", w: 2});
+    series.push({vals: cloudHi, color: "var(--c-cloud-hi)", w: 2});
+    legend.push([T.layer_low, "var(--c-cloud)"], [T.layer_mid, "var(--c-cloud-mid)"], [T.layer_high, "var(--c-cloud-hi)"]);
+  }
+  grid.appendChild(metricCard({
+    title: hasLayers ? T.cloud_layers : T.cloud, color: "var(--c-cloud)", unit: "%", vals: cloud,
+    now, sub: T.total_now, fmt: v => Math.round(v), hint: T.scrub, wide: true, legend,
+    inner: multiLine(series, {min: 0, max: 100, thresholds: [[CLEAR_CLOUD, "var(--ok)"]], bands}),
+  }));
+
+  /* --- seeing / ветер --- */
+  grid.appendChild(metricCard({
+    title: T.seeing, color: "var(--c-seeing)", unit: "″", vals: seeing, now,
+    sub: T.arcsec_now, fmt: v => v.toFixed(2), hint: T.scrub,
+    inner: barChart(seeing, {
+      min: 0, max: Math.max(2.2, Math.max(...seeing) * 1.1), thresholds: [[1.5, "var(--ok)"]], bands,
+      colorFn: v => v <= 1.5 ? "var(--ok)" : v <= 1.9 ? "var(--warn)" : "var(--bad)",
+    }),
+  }));
+  const windMax = Math.max(13, Math.max(...wind) * 1.1);
+  let windInner = barChart(wind, {
+    min: 0, max: windMax, bands,
+    colorFn: v => v <= 7 ? "var(--c-wind)" : v <= 9 ? "var(--warn)" : "var(--bad)",
+  });
+  if (jet){
+    // джет в десятках м/с — накладываем его линию в собственном масштабе
+    const jMax = Math.max(50, Math.max(...jet) * 1.15);
+    const d = jet.map((v, i) => (i ? "L" : "M") + px(i).toFixed(1) + " " + py(v, 0, jMax).toFixed(1)).join(" ");
+    windInner += `<line x1="${PL}" y1="${py(30, 0, jMax).toFixed(1)}" x2="${VW - PR}" y2="${py(30, 0, jMax).toFixed(1)}" stroke="var(--c-jet)" stroke-width="1" stroke-dasharray="4 4" opacity=".45"/>
+      <path d="${d}" fill="none" stroke="var(--c-jet)" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`;
+  }
+  grid.appendChild(metricCard({
+    title: jet ? T.wind_jet : T.wind, color: "var(--c-wind)", unit: " " + T.ms, vals: wind, now,
+    sub: jet ? `${T.jet} ${Math.round(jet[Math.min(now, jet.length - 1)])} ${T.ms}` : T.now,
+    fmt: v => Math.round(v), hint: T.scrub,
+    legend: jet ? [[T.wind, "var(--c-wind)"], [T.jet, "var(--c-jet)"]] : null,
+    inner: windInner,
+  }));
+
+  /* --- температура / влажность --- */
+  const tLo = Math.min(...temp), tHi = Math.max(...temp), tPad = Math.max(2, (tHi - tLo) * 0.25);
+  grid.appendChild(metricCard({
+    title: T.temp, color: "var(--c-temp)", unit: "°", vals: temp, now, sub: T.now,
+    fmt: v => Math.round(v), hint: T.scrub,
+    inner: lineChart(temp, {color: "var(--c-temp)", min: tLo - tPad, max: tHi + tPad, bands}),
+  }));
+  const hLo = Math.min(40, Math.min(...humid) - 5);
+  grid.appendChild(metricCard({
+    title: T.humidity, color: "var(--c-humid)", unit: "%", vals: humid, now, sub: T.now,
+    fmt: v => Math.round(v), hint: T.scrub,
+    inner: lineChart(humid, {color: "var(--c-humid)", min: hLo, max: 100, bands}),
+  }));
+
+  /* --- Солнце --- */
+  const sLo = Math.min(-30, Math.min(...sun) - 5), sHi = Math.max(40, Math.max(...sun) + 5);
+  grid.appendChild(metricCard({
+    title: T.sun_alt, color: "var(--c-sun)", unit: "°", vals: sun, now, sub: T.above_horizon,
+    fmt: v => Math.round(v), hint: T.scrub,
+    inner: lineChart(sun, {color: "var(--c-sun)", min: sLo, max: sHi, bands,
+      thresholds: [[0, "#9aa6cc"], [NIGHT_SUN, "var(--ok)"]]}),
+  }));
+
+  /* --- Луна --- */
+  const moonCard = document.createElement("section");
+  moonCard.className = "card";
+  const f = Math.max(0, Math.min(1, p.moon / 100));
+  const term = Math.abs(1 - 2 * f) * 32;
+  moonCard.innerHTML = `
+    <div class="top">
+      <div class="title"><i style="background:var(--c-moon)"></i>${T.moon}</div>
+      <div class="readout"><div class="big" style="color:var(--c-moon)">${Math.round(p.moon)}<span class="unit">%</span></div>
+        <div class="sub">${T.illumination}</div></div>
+    </div>
+    <div class="moon-row">
+      <svg class="moon-disc" viewBox="0 0 74 74" aria-hidden="true">
+        <clipPath id="mc"><circle cx="37" cy="37" r="32"/></clipPath>
+        <g clip-path="url(#mc)">
+          <circle cx="37" cy="37" r="32" fill="#ffd27a"/>
+          <rect x="5" y="5" width="32" height="64" fill="#1b2444"/>
+          <ellipse cx="37" cy="37" rx="${term.toFixed(1)}" ry="32" fill="${f < 0.5 ? "#1b2444" : "#ffd27a"}"/>
+        </g>
+        <circle cx="37" cy="37" r="32" fill="none" stroke="rgba(255,255,255,.12)"/>
+      </svg>
+      <div class="moon-meta">
+        <div class="m1">${T[moonPhaseKey(p.moon)]}</div>
+        <div class="m2">${moonNote}</div>
+      </div>
+    </div>`;
+  grid.appendChild(moonCard);
+
+  /* --- координаты --- */
+  const mapCard = document.createElement("section");
+  mapCard.className = "card map";
+  mapCard.innerHTML = `
+    <div class="title"><i style="background:var(--c-temp)"></i>${T.location}</div>
+    <div class="coords">
+      <span>${T.lat} <b>${p.lat.toFixed(4)}°</b></span>
+      <span>${T.lon} <b>${p.lon.toFixed(4)}°</b></span>
+      <span>${T.tz} <b>UTC${p.tz >= 0 ? "+" : ""}${p.tz}</b></span>
+    </div>`;
+  grid.appendChild(mapCard);
+}
+
+/* ===== Старт ===== */
+try {
+  const tg = window.Telegram && window.Telegram.WebApp;
+  if (tg){ tg.ready(); tg.expand(); }
+} catch (_e) { /* страница работает и вне Telegram */ }
+
+try {
+  const raw = rawPayload();
+  if (!raw) throw new Error("no payload");
+  render(b64urlToJson(raw));
+} catch (e) {
+  const lang = (navigator.language || "ru").slice(0, 2);
+  const T = L[lang] || L.ru;
+  document.getElementById("grid").hidden = true;
+  const empty = document.getElementById("empty");
+  empty.hidden = false;
+  empty.textContent = T.empty;
+  document.getElementById("h1").textContent = T.title;
+}
+</script>
+</body>
+</html>
