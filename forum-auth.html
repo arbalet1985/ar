@@ -1,11 +1,11 @@
 <!doctype html>
-<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Вход на Астрофорум</title><style>:root{color-scheme:light dark;font-family:system-ui,-apple-system,sans-serif;background:var(--tg-theme-bg-color,#f5f7fc);color:var(--tg-theme-text-color,#172338)}*{box-sizing:border-box}body{margin:0}main{max-width:460px;margin:auto;padding:32px 24px calc(32px + env(safe-area-inset-bottom))}.eyebrow{font-size:11px;font-weight:750;letter-spacing:1.8px;color:var(--tg-theme-link-color,#246ada)}h1{font-size:38px;line-height:1.07;letter-spacing:-1.7px;margin:18px 0}.intro{line-height:1.5;color:var(--tg-theme-hint-color,#6d788a);margin-bottom:30px}label{display:block;font-weight:600;font-size:14px;margin:18px 0 8px}input:not([type=checkbox]){width:100%;min-height:50px;font:inherit;border:1px solid #8a98ad66;border-radius:12px;padding:12px;background:var(--tg-theme-secondary-bg-color,#fff);color:inherit}input:focus{outline:2px solid #3a84ee;outline-offset:2px}.password{display:flex;position:relative}.password input{padding-right:92px}.password button{position:absolute;right:8px;top:8px;padding:10px 8px;border:0;background:transparent;color:var(--tg-theme-link-color,#246ada)}.consent{display:flex;gap:10px;font-size:13px;line-height:1.5;font-weight:400;margin:22px 0}.consent input{width:18px;height:18px;flex-shrink:0;accent-color:#2674e8}.primary{width:100%;border:0;border-radius:13px;padding:16px;font:inherit;font-weight:650;background:#2674e8;color:white;cursor:pointer}.primary:disabled{opacity:.55;cursor:wait}#status{font-size:14px;line-height:1.6;overflow-wrap:anywhere}.success{color:var(--tg-theme-link-color,#176b4e)}aside{font-size:12px;line-height:1.6;color:var(--tg-theme-hint-color,#6d788a);border-top:1px solid #8a98ad44;padding-top:20px;margin-top:24px}[hidden]{display:none!important}@media(prefers-color-scheme:dark){:root{background:var(--tg-theme-bg-color,#101821);color:var(--tg-theme-text-color,#edf2fa)}input:not([type=checkbox]){background:var(--tg-theme-secondary-bg-color,#1d2938)}}
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Вход на Астрофорум</title><style>:root{color-scheme:light dark;font-family:system-ui,-apple-system,sans-serif;background:var(--tg-theme-bg-color,#f5f7fc);color:var(--tg-theme-text-color,#172338)}*{box-sizing:border-box}body{margin:0}main{max-width:460px;margin:auto;padding:32px 24px calc(32px + env(safe-area-inset-bottom))}.eyebrow{font-size:11px;font-weight:750;letter-spacing:1.8px;color:var(--tg-theme-link-color,#246ada)}h1{font-size:38px;line-height:1.07;letter-spacing:-1.7px;margin:18px 0}.intro{line-height:1.5;color:var(--tg-theme-hint-color,#6d788a);margin-bottom:30px}label{display:block;font-weight:600;font-size:14px;margin:18px 0 8px}input:not([type=checkbox]){width:100%;min-height:50px;font:inherit;border:1px solid #8a98ad66;border-radius:12px;padding:12px;background:var(--tg-theme-secondary-bg-color,#fff);color:inherit}input:focus{outline:2px solid #3a84ee;outline-offset:2px}.password{display:flex;position:relative}.password input{padding-right:92px}.password button{position:absolute;right:8px;top:8px;padding:10px 8px;border:0;background:transparent;color:var(--tg-theme-link-color,#246ada)}.consent{display:flex;gap:10px;font-size:13px;line-height:1.5;font-weight:400;margin:22px 0}.consent input{width:18px;height:18px;flex-shrink:0;accent-color:#2674e8}.primary{width:100%;border:0;border-radius:13px;padding:16px;font:inherit;font-weight:650;background:#2674e8;color:white;cursor:pointer}.primary:disabled{opacity:.55;cursor:not-allowed}#status{font-size:14px;line-height:1.6;overflow-wrap:anywhere}.success{color:var(--tg-theme-link-color,#176b4e)}aside{font-size:12px;line-height:1.6;color:var(--tg-theme-hint-color,#6d788a);border-top:1px solid #8a98ad44;padding-top:20px;margin-top:24px}[hidden]{display:none!important}@media(prefers-color-scheme:dark){:root{background:var(--tg-theme-bg-color,#101821);color:var(--tg-theme-text-color,#edf2fa)}input:not([type=checkbox]){background:var(--tg-theme-secondary-bg-color,#1d2938)}}
 </style><script src="https://telegram.org/js/telegram-web-app.js"></script></head>
 <body><main><div class="eyebrow">БАРАХОЛКА · АСТРОФОРУМ</div><h1>Ваш голос<br>на форуме</h1><p class="intro">Подключите аккаунт astronomy.ru, чтобы отвечать на объявления прямо из Telegram.</p>
 <form id="login"><label for="username">Логин форума</label><input id="username" name="username" autocomplete="username" maxlength="100" required>
 <label for="password">Пароль</label><div class="password"><input id="password" name="password" type="password" autocomplete="current-password" maxlength="512" required><button id="show" type="button" aria-label="Показать пароль">Показать</button></div>
 <label class="consent"><input id="consent" type="checkbox" required><span>Разрешаю автоматически публиковать мои комментарии из обсуждения барахолки на форуме от моего имени.</span></label>
-<button class="primary" id="submit" type="submit">Подключить аккаунт</button></form>
+<button class="primary" id="submit" type="submit" disabled>Подключить аккаунт</button></form>
 <p id="status" role="status" aria-live="polite"></p><button id="close" class="primary" type="button" hidden>Вернуться в Telegram</button>
 <aside>Пароль используется только для входа и не сохраняется. Сервер бота получает доступ к форумному аккаунту через сохранённую зашифрованную сессию. Отключить её можно в меню «Барахолка».</aside></main><script>'use strict';
 const tg = window.Telegram && window.Telegram.WebApp;
@@ -13,6 +13,9 @@ const form = document.getElementById('login');
 const status = document.getElementById('status');
 const submit = document.getElementById('submit');
 const password = document.getElementById('password');
+const consent = document.getElementById('consent');
+let busy = false;
+let finished = false;
 const launch = new URLSearchParams(location.hash.slice(1));
 const telegramMode = launch.get('transport') === 'telegram';
 const publicKey = launch.get('pub') || '';
@@ -34,6 +37,11 @@ history.replaceState(null, '', location.pathname);
 if (tg) { tg.ready(); tg.expand(); }
 const canSend = Boolean(tg && ticket && (telegramMode ?
   publicKey && typeof tg.sendData === 'function' && cryptoAPI && cryptoAPI.subtle : tg.initData && apiURL));
+function updateSubmit() {
+  submit.disabled = !canSend || !consent.checked || busy || finished;
+}
+consent.addEventListener('change', updateSubmit);
+updateSubmit();
 if (!canSend) {
   form.hidden = true;
   status.textContent = 'Откройте окно кнопкой из «Барахолка» в Telegram. Если вход не открывается, обновите Telegram или попробуйте на телефоне.';
@@ -68,17 +76,19 @@ async function encryptForBot(credentials) {
 }
 form.addEventListener('submit', async event => {
   event.preventDefault();
-  if (submit.disabled || !canSend) return;
-  submit.disabled = true;
+  if (submit.disabled || !canSend || !consent.checked || busy || finished) return;
+  busy = true;
+  updateSubmit();
   status.textContent = telegramMode ? 'Шифруем данные для бота…' : 'Подключаем аккаунт…';
   try {
     const credentials = {username: document.getElementById('username').value,
-      password: password.value, consent: document.getElementById('consent').checked};
+      password: password.value, consent: consent.checked};
     if (telegramMode) {
       const encrypted = await encryptForBot(credentials);
       credentials.password = '';
       password.value = '';
       tg.sendData(encrypted);
+      finished = true;
       status.textContent = 'Данные переданы. Результат входа придёт от бота в личку.';
       return;
     }
@@ -95,6 +105,7 @@ form.addEventListener('submit', async event => {
       status.textContent = result.error || 'Не удалось войти. Откройте форму заново.';
       return;
     }
+    finished = true;
     form.hidden = true;
     status.className = 'success';
     status.textContent = 'Подключён аккаунт ' + result.username + '. ' +
@@ -108,7 +119,8 @@ form.addEventListener('submit', async event => {
       'Нет связи с сервером. Если вход уже выполнен, бот сообщит об этом в личку. Откройте «Барахолка» заново.';
   } finally {
     password.value = '';
-    submit.disabled = false;
+    busy = false;
+    updateSubmit();
   }
 });
 document.getElementById('close').onclick = () => tg && tg.close();
