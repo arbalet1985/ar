@@ -14,41 +14,80 @@ const status = document.getElementById('status');
 const submit = document.getElementById('submit');
 const password = document.getElementById('password');
 const launch = new URLSearchParams(location.hash.slice(1));
+const telegramMode = launch.get('transport') === 'telegram';
+const publicKey = launch.get('pub') || '';
+const cryptoAPI = window.crypto;
 let ticket = launch.get('t') || '';
 let apiURL = null;
-try {
-  const address = launch.get('api') ||
-    (/^\/forum-auth\/?$/.test(location.pathname) ? location.origin + '/forum-auth/api/login' : '');
-  const candidate = new URL(address);
-  if (candidate.protocol === 'https:' && !candidate.username && !candidate.password &&
-      !candidate.search && !candidate.hash && candidate.pathname === '/forum-auth/api/login') {
-    apiURL = candidate.href;
-  }
-} catch (_) { /* A missing API must not fall back to the Pages host. */ }
+if (!telegramMode) {
+  try {
+    const address = launch.get('api') ||
+      (/^\/forum-auth\/?$/.test(location.pathname) ? location.origin + '/forum-auth/api/login' : '');
+    const candidate = new URL(address);
+    if (candidate.protocol === 'https:' && !candidate.username && !candidate.password &&
+        !candidate.search && !candidate.hash && candidate.pathname === '/forum-auth/api/login') {
+      apiURL = candidate.href;
+    }
+  } catch (_) { /* Missing API must never fall back to the Pages host. */ }
+}
 history.replaceState(null, '', location.pathname);
 if (tg) { tg.ready(); tg.expand(); }
-if (!tg || !tg.initData || !ticket || !apiURL) {
+const canSend = Boolean(tg && ticket && (telegramMode ?
+  publicKey && typeof tg.sendData === 'function' && cryptoAPI && cryptoAPI.subtle : tg.initData && apiURL));
+if (!canSend) {
   form.hidden = true;
-  status.textContent = !apiURL && ticket ? 'Адрес сервера авторизации не настроен. Откройте «Барахолка» заново или обратитесь к владельцу бота.' : 'Откройте эту форму кнопкой авторизации в меню «Барахолка» Telegram-бота.';
+  status.textContent = 'Откройте окно кнопкой из «Барахолка» в Telegram. Если вход не открывается, обновите Telegram или попробуйте на телефоне.';
 }
 document.getElementById('show').onclick = function () {
   password.type = password.type === 'password' ? 'text' : 'password';
   this.textContent = password.type === 'password' ? 'Показать' : 'Скрыть';
   this.setAttribute('aria-label', this.textContent + ' пароль');
 };
+function unbase64(value) {
+  const normal = value.replace(/-/g, '+').replace(/_/g, '/');
+  return Uint8Array.from(atob(normal.padEnd(Math.ceil(normal.length / 4) * 4, '=')), c => c.charCodeAt(0));
+}
+function base64(value) {
+  return btoa(String.fromCharCode(...new Uint8Array(value))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+async function encryptForBot(credentials) {
+  const encoder = new TextEncoder();
+  const rsa = await cryptoAPI.subtle.importKey('spki', unbase64(publicKey),
+    {name: 'RSA-OAEP', hash: 'SHA-256'}, false, ['encrypt']);
+  const aes = await cryptoAPI.subtle.generateKey({name: 'AES-GCM', length: 256}, true, ['encrypt']);
+  const iv = cryptoAPI.getRandomValues(new Uint8Array(12));
+  const wrapped = await cryptoAPI.subtle.encrypt({name: 'RSA-OAEP', label: encoder.encode('forum-auth-v1')},
+    rsa, await cryptoAPI.subtle.exportKey('raw', aes));
+  const encrypted = await cryptoAPI.subtle.encrypt({name: 'AES-GCM', iv,
+    additionalData: encoder.encode('forum-auth-v1:' + ticket), tagLength: 128},
+    aes, encoder.encode(JSON.stringify(credentials)));
+  const payload = JSON.stringify({type: 'forum_auth_v1', ticket,
+    key: base64(wrapped), iv: base64(iv), data: base64(encrypted)});
+  if (encoder.encode(payload).length > 4096) throw new Error('payload_size');
+  return payload;
+}
 form.addEventListener('submit', async event => {
   event.preventDefault();
-  if (submit.disabled || !apiURL || !tg || !tg.initData || !ticket) return;
+  if (submit.disabled || !canSend) return;
   submit.disabled = true;
-  status.textContent = 'Подключаем аккаунт…';
+  status.textContent = telegramMode ? 'Шифруем данные для бота…' : 'Подключаем аккаунт…';
   try {
+    const credentials = {username: document.getElementById('username').value,
+      password: password.value, consent: document.getElementById('consent').checked};
+    if (telegramMode) {
+      const encrypted = await encryptForBot(credentials);
+      credentials.password = '';
+      password.value = '';
+      tg.sendData(encrypted);
+      status.textContent = 'Данные переданы. Результат входа придёт от бота в личку.';
+      return;
+    }
     const response = await fetch(apiURL, {
       method: 'POST', headers: {'Content-Type': 'application/json'}, cache: 'no-store',
       mode: 'cors', credentials: 'omit', redirect: 'error',
-      body: JSON.stringify({init_data: tg.initData, ticket,
-        username: document.getElementById('username').value,
-        password: password.value, consent: document.getElementById('consent').checked})
+      body: JSON.stringify({init_data: tg.initData, ticket, ...credentials})
     });
+    credentials.password = '';
     password.value = '';
     const result = await response.json();
     if (result.ticket) ticket = result.ticket;
@@ -65,7 +104,8 @@ form.addEventListener('submit', async event => {
     if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
     if (typeof tg.close === 'function') setTimeout(() => tg.close(), 1800);
   } catch (_) {
-    status.textContent = 'Нет связи с сервером. Если вход уже выполнен, бот сообщит об этом в личку. Откройте «Барахолка» заново.';
+    status.textContent = telegramMode ? 'Не удалось передать данные. Откройте новое окно входа из «Барахолка»; при необходимости обновите Telegram.' :
+      'Нет связи с сервером. Если вход уже выполнен, бот сообщит об этом в личку. Откройте «Барахолка» заново.';
   } finally {
     password.value = '';
     submit.disabled = false;
